@@ -87,7 +87,7 @@ reason                     string
 
 ## Order Layer
 
-The order layer still needs detailed design, but should include:
+A detailed draft is available in [Order Data Model](architecture/Order%20Data%20Model.docx). The following is the compact conceptual view; the detailed draft remains subject to the decisions recorded in the [source document assessment](reviews/source-documents-assessment.md).
 
 ```text
 ORDERS

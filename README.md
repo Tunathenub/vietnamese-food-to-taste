@@ -53,11 +53,20 @@ Open app
 | ORM | Prisma |
 | Database | PostgreSQL |
 
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [Business rules](docs/business-rules/Business%20Rules%20for%20Vietnamese%20Food%20Taste%20App.docx)
+- [Order data model](docs/architecture/Order%20Data%20Model.docx)
+- [Initial dish and ingredient dataset](docs/data/Initial%20Dish%20and%20Ingredient%20Dataset.docx)
+- [Source document assessment](docs/reviews/source-documents-assessment.md)
+
 ## Current Status
 
 - [x] Define MVP features
 - [x] Design core data model
-- [ ] Design order layer
+- [x] Draft order layer
+- [ ] Resolve order-model review decisions
 - [ ] Convert schema to Prisma
 - [ ] Choose final tech stack
 - [ ] Design wireframes
