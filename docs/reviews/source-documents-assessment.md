@@ -4,16 +4,18 @@ Date reviewed: 2026-07-15
 
 ## Executive Summary
 
-The three source documents form a strong product-definition package for an MVP. The business rules are the most implementation-ready artifact. The order model is a useful detailed draft, but several schema choices and pricing invariants must be finalized before converting it to Prisma. The dish and ingredient dataset is valuable product input, but it is not yet a machine-ready seed dataset.
+The original three source documents form a strong product-definition package for an MVP. The added user flows, sitemap, API contract, and working order model close the major checkout-design gaps identified in the first review. The dish and ingredient dataset remains valuable product input, but it is not yet a machine-ready seed dataset.
 
-Recommended status: **approved as product and architecture source material; not yet approved as an executable schema or production seed dataset.**
+Recommended status: **approved for the first Prisma and API implementation draft; not yet approved as a production seed dataset.**
 
 ## Readiness
 
 | Document | Current readiness | Recommended use |
 | --- | --- | --- |
 | Business Rules | High | Acceptance criteria, API validation, and test-case design |
-| Order Data Model | Medium | Architecture draft to be converted into an ADR and Prisma schema after open decisions are resolved |
+| Working Order Data Model | High | Authoritative input for the first Prisma schema |
+| API Contract | Medium-high | Route and validation contract; refine alongside implementation tests |
+| User Flows and Sitemap | High | UX scope, route planning, and acceptance scenarios |
 | Initial Dish and Ingredient Dataset | Medium-low | Product seed source to be normalized into CSV, JSON, or database seed code |
 
 ## 1. Business Rules
@@ -28,8 +30,7 @@ Recommended status: **approved as product and architecture source material; not 
 
 ### Gaps and decisions
 
-- Define an explicit order-status transition matrix, including who may perform each transition and whether reversal is allowed.
-- Define rounding, precision, and storage rules for VND and future currencies. Prefer integer minor units or a documented fixed decimal strategy.
+- Promote the status-transition, integer-money, and idempotency rules from the working architecture documents into numbered business rules during the next business-rule revision.
 - Replace or formally define `HALAL_FRIENDLY`; it may imply a guarantee that ingredient-level data alone cannot establish.
 - Add rules for idempotent checkout submission to prevent duplicate orders after retries.
 - Add privacy and retention rules for customer contact details, addresses, and order notes.
@@ -67,26 +68,26 @@ Normalize the document into separate seed entities for dishes, ingredients, dish
 - The checkout process correctly places validation and price calculation before a single database transaction.
 - Nullable references plus snapshot fields support soft deletion and durable order history.
 
-### Blocking decisions before Prisma conversion
+### Decisions incorporated into the working model
 
-- Choose one substitution representation: a dedicated `ORDER_ITEM_SUBSTITUTIONS` table or the `SUBSTITUTED` action in `ORDER_ITEM_INGREDIENT_CUSTOMIZATIONS`. Keeping both without a strict boundary risks duplicate records and double-counted price deltas.
-- Define monetary invariants. Clarify whether `subtotal` is base-only or already includes customization, and ensure `final_unit_price`, `line_total`, `customization_total`, and `total` cannot count the same delta twice.
-- Add database constraints for positive quantity, valid taste ranges, non-negative totals where appropriate, unique order-item taste attributes, and unique customization records.
-- Define deletion behavior for every foreign key and make soft deletion the normal path for menu entities.
-- Define race-safe generation for `order_number` rather than relying only on a display format.
-- Add an idempotency key or equivalent uniqueness rule for order creation retries.
-- Decide whether delivery address remains a single required field for pickup orders; the current payment methods include pickup but `delivery_address` is mandatory.
+- Substitutions use a dedicated `ORDER_ITEM_SUBSTITUTIONS` snapshot table and are excluded from ingredient customization actions.
+- Monetary values use integer minor units in `bigint` columns; subtotal, customization total, and final total have non-overlapping formulas.
+- Quantity, range, uniqueness, total, foreign-key, and deletion rules are documented for the Prisma draft.
+- Order numbers require a concurrency-safe allocator.
+- Idempotency stores both a unique key and normalized request hash.
+- Delivery address is conditional on `fulfillment_type = DELIVERY`.
+
+### Implementation checks still required
+
+- Confirm PostgreSQL constraints and Prisma mappings, especially `bigint` serialization at the API boundary.
+- Define the exact transaction/isolation behavior for concurrent menu changes and idempotent retries.
+- Add automated tests for every valid and invalid status transition.
 
 ## 4. Cross-Document Consistency
 
-The detailed order model supersedes the placeholder order section in `data-model.md`, but it remains a draft until the decisions above are resolved.
+The Markdown [order model](../architecture/order-model.md) supersedes the placeholder order section in `data-model.md` and the original Word draft for implementation purposes. The Word document remains a traceable source artifact.
 
-Terms should be standardized before implementation:
-
-- Use either `min_value` / `max_value` or `min_adjust` / `max_adjust` consistently for dish taste bounds.
-- Use `DISH_TASTE_CONFIGURATIONS` consistently instead of mixing it with `DISH_TASTE_PROFILES`.
-- Use dish-specific substitution rules throughout; the original core model currently implies a global ingredient-to-ingredient substitution.
-- Define whether ingredient `role` replaces the earlier `is_core` and `is_optional` flags.
+The working documents now standardize `min_value` / `max_value`, `DISH_TASTE_CONFIGURATIONS`, dish-specific substitutions, and the `REQUIRED` / `REMOVABLE` / `OPTIONAL` ingredient role. Legacy names may still appear inside the retained Word sources and should not be copied into the Prisma schema.
 
 ## 5. Document Quality Review
 
@@ -95,12 +96,11 @@ Terms should be standardized before implementation:
 - No tracked insertions, tracked deletions, or actual comments were found.
 - The DOCX files do not contain explicit page-size metadata and rely on application defaults.
 - Visual page rendering could not be completed in the current environment because LibreOffice is unavailable. Content and OOXML structure were reviewed, but clipping, page breaks, and final pagination should be checked once in Microsoft Word or LibreOffice before treating the files as publication-ready.
+- The added Markdown documents require no pagination render; their headings, fenced examples, tables, and internal links were checked structurally.
 
 ## Recommended Next Steps
 
-1. Resolve the substitution representation and monetary invariants.
-2. Standardize model names and field names across all documents.
-3. Convert the order draft into a Prisma schema with constraints and transaction tests.
-4. Normalize the dataset into machine-readable seed files and fill the missing country-profile values.
-5. Derive acceptance tests from `BR-01` through `BR-36`.
-
+1. Convert the working order model into a Prisma schema with constraints and transaction tests.
+2. Normalize the dataset into machine-readable seed files and fill the missing country-profile values.
+3. Derive acceptance tests from `BR-01` through `BR-36` and the API error catalog.
+4. Confirm the final application stack and implement the first vertical slice: menu -> customization validation -> idempotent checkout.

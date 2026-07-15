@@ -57,7 +57,10 @@ Open app
 
 - [Documentation index](docs/README.md)
 - [Business rules](docs/business-rules/Business%20Rules%20for%20Vietnamese%20Food%20Taste%20App.docx)
-- [Order data model](docs/architecture/Order%20Data%20Model.docx)
+- [Order data model](docs/architecture/order-model.md)
+- [API contract](docs/api/api-contract.md)
+- [User flows](docs/product/user-flows.md)
+- [Sitemap](docs/product/sitemap.md)
 - [Initial dish and ingredient dataset](docs/data/Initial%20Dish%20and%20Ingredient%20Dataset.docx)
 - [Source document assessment](docs/reviews/source-documents-assessment.md)
 
@@ -66,7 +69,9 @@ Open app
 - [x] Define MVP features
 - [x] Design core data model
 - [x] Draft order layer
-- [ ] Resolve order-model review decisions
+- [x] Resolve core order-model decisions
+- [x] Define user flows and sitemap
+- [x] Draft API contract
 - [ ] Convert schema to Prisma
 - [ ] Choose final tech stack
 - [ ] Design wireframes
