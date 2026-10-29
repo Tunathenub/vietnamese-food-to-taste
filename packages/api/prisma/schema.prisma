@@ -1,0 +1,406 @@
+// Vietnamese Food Taste App - Prisma Schema
+// Based on data-model.md and order-model.md
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Users ──
+
+enum UserRole {
+  CUSTOMER
+  STAFF
+  ADMIN
+}
+
+model User {
+  id                      String        @id @default(uuid())
+  email                   String        @unique
+  passwordHash            String        @default("") @map("password_hash")
+  name                    String        @default("")
+  nationality             String?
+  dietaryRestrictions     String?       @map("dietary_restrictions")
+  tastePreferences        String?       @map("taste_preferences")
+  role                    UserRole      @default(CUSTOMER)
+  preferredTasteProfileId String?       @map("preferred_taste_profile_id")
+  preferredTasteProfile   TasteProfile? @relation(fields: [preferredTasteProfileId], references: [id], onDelete: SetNull)
+  createdAt               DateTime      @default(now()) @map("created_at")
+  updatedAt               DateTime      @updatedAt @map("updated_at")
+
+  orders Order[]
+
+  @@map("users")
+}
+
+// ── Taste System ──
+
+enum TasteProfileType {
+  COUNTRY
+  REGION
+  CUSTOM
+}
+
+model TasteProfile {
+  id          String                @id @default(uuid())
+  code        String                @unique
+  name        String
+  type        TasteProfileType
+  countryCode String?               @map("country_code")
+  description String?
+  isActive    Boolean               @default(true) @map("is_active")
+  defaults    TasteProfileDefault[]
+  users       User[]
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+
+  @@map("taste_profiles")
+}
+
+model TasteAttribute {
+  id       String @id @default(uuid())
+  code     String @unique
+  name     String
+  minValue Int    @map("min_value")
+  maxValue Int    @map("max_value")
+
+  profileDefaults    TasteProfileDefault[]
+  dishConfigurations DishTasteConfiguration[]
+
+  @@map("taste_attributes")
+}
+
+model TasteProfileDefault {
+  tasteProfileId String         @map("taste_profile_id")
+  attributeId    String         @map("attribute_id")
+  defaultValue   Int            @map("default_value")
+  tasteProfile   TasteProfile   @relation(fields: [tasteProfileId], references: [id], onDelete: Cascade)
+  attribute      TasteAttribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+
+  @@id([tasteProfileId, attributeId])
+  @@map("taste_profile_defaults")
+}
+
+// ── Dishes ──
+
+model Dish {
+  id              String    @id @default(uuid())
+  slug            String    @unique
+  name            String
+  category        String
+  description     String?
+  imagePath       String?   @map("image_path")
+  prepTimeMinutes Int?      @map("prep_time_minutes")
+  basePriceMinor  BigInt    @map("base_price_minor")
+  currency        String    @default("VND")
+  isAvailable     Boolean   @default(true) @map("is_available")
+  deletedAt       DateTime? @map("deleted_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  ingredients         DishIngredient[]
+  tasteConfigurations DishTasteConfiguration[]
+  substitutions       DishIngredientSubstitution[]
+  orderItems          OrderItem[]
+
+  @@map("dishes")
+}
+
+// ── Ingredients ──
+
+model Ingredient {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  name        String
+  category    String
+  isAvailable Boolean   @default(true) @map("is_available")
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  dishIngredients         DishIngredient[]
+  allergens               IngredientAllergen[]
+  dietaryTags             IngredientDietaryTag[]
+  originalSubstitutions   DishIngredientSubstitution[] @relation("OriginalIngredient")
+  substituteSubstitutions DishIngredientSubstitution[] @relation("SubstituteIngredient")
+
+  @@map("ingredients")
+}
+
+model Allergen {
+  id   String @id @default(uuid())
+  code String @unique
+  name String
+
+  ingredients IngredientAllergen[]
+
+  @@map("allergens")
+}
+
+model IngredientAllergen {
+  ingredientId String     @map("ingredient_id")
+  allergenId   String     @map("allergen_id")
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  allergen     Allergen   @relation(fields: [allergenId], references: [id], onDelete: Cascade)
+
+  @@id([ingredientId, allergenId])
+  @@map("ingredient_allergens")
+}
+
+model DietaryTag {
+  id   String @id @default(uuid())
+  code String @unique
+  name String
+
+  ingredients IngredientDietaryTag[]
+
+  @@map("dietary_tags")
+}
+
+model IngredientDietaryTag {
+  ingredientId String     @map("ingredient_id")
+  dietaryTagId String     @map("dietary_tag_id")
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  dietaryTag   DietaryTag @relation(fields: [dietaryTagId], references: [id], onDelete: Cascade)
+
+  @@id([ingredientId, dietaryTagId])
+  @@map("ingredient_dietary_tags")
+}
+
+// ── Dish Configuration ──
+
+enum IngredientRole {
+  REQUIRED
+  REMOVABLE
+  OPTIONAL
+}
+
+model DishIngredient {
+  id                   String         @id @default(uuid())
+  dishId               String         @map("dish_id")
+  ingredientId         String         @map("ingredient_id")
+  role                 IngredientRole
+  defaultQuantity      Decimal        @map("default_quantity") @db.Decimal(10, 2)
+  minQuantity          Decimal        @map("min_quantity") @db.Decimal(10, 2)
+  maxQuantity          Decimal        @map("max_quantity") @db.Decimal(10, 2)
+  unit                 String
+  priceDeltaPerStep    BigInt         @default(0) @map("price_delta_per_step")
+  isQuantityAdjustable Boolean        @default(false) @map("is_quantity_adjustable")
+  displayOrder         Int            @default(0) @map("display_order")
+  kitchenNote          String?        @map("kitchen_note")
+  isAvailable          Boolean        @default(true) @map("is_available")
+
+  dish       Dish       @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@unique([dishId, ingredientId])
+  @@map("dish_ingredients")
+}
+
+model DishTasteConfiguration {
+  id                  String  @id @default(uuid())
+  dishId              String  @map("dish_id")
+  attributeId         String  @map("attribute_id")
+  baseValue           Int     @map("base_value")
+  minValue            Int     @map("min_value")
+  maxValue            Int     @map("max_value")
+  isAdjustable        Boolean @default(true) @map("is_adjustable")
+  customerDescription String? @map("customer_description")
+  displayOrder        Int     @default(0) @map("display_order")
+
+  dish      Dish              @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  attribute TasteAttribute    @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  options   DishTasteOption[]
+
+  @@unique([dishId, attributeId])
+  @@map("dish_taste_configurations")
+}
+
+model DishTasteOption {
+  id                  String  @id @default(uuid())
+  dishTasteConfigId   String  @map("dish_taste_config_id")
+  value               Int
+  customerLabel       String  @map("customer_label")
+  customerDescription String? @map("customer_description")
+  kitchenInstruction  String  @map("kitchen_instruction")
+  priceDelta          BigInt  @default(0) @map("price_delta")
+
+  dishTasteConfig DishTasteConfiguration @relation(fields: [dishTasteConfigId], references: [id], onDelete: Cascade)
+
+  @@unique([dishTasteConfigId, value])
+  @@map("dish_taste_options")
+}
+
+model DishIngredientSubstitution {
+  id                     String  @id @default(uuid())
+  dishId                 String  @map("dish_id")
+  originalIngredientId   String  @map("original_ingredient_id")
+  substituteIngredientId String  @map("substitute_ingredient_id")
+  reason                 String?
+  priceDelta             BigInt  @default(0) @map("price_delta")
+  kitchenInstruction     String  @map("kitchen_instruction")
+  isAvailable            Boolean @default(true) @map("is_available")
+
+  dish                 Dish       @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  originalIngredient   Ingredient @relation("OriginalIngredient", fields: [originalIngredientId], references: [id], onDelete: Cascade)
+  substituteIngredient Ingredient @relation("SubstituteIngredient", fields: [substituteIngredientId], references: [id], onDelete: Cascade)
+
+  @@unique([dishId, originalIngredientId, substituteIngredientId])
+  @@map("dish_ingredient_substitutions")
+}
+
+// ── Orders ──
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+}
+
+enum FulfillmentType {
+  DELIVERY
+  PICKUP
+}
+
+enum PaymentMethod {
+  CASH_ON_DELIVERY
+  CASH_ON_PICKUP
+  MOCK_PAYMENT
+}
+
+model Order {
+  id                     String          @id @default(uuid())
+  orderNumber            String          @unique @map("order_number")
+  idempotencyKey         String          @unique @map("idempotency_key")
+  idempotencyRequestHash String?         @map("idempotency_request_hash")
+  userId                 String?         @map("user_id")
+  user                   User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  status                 OrderStatus     @default(PENDING)
+  fulfillmentType        FulfillmentType @map("fulfillment_type")
+  paymentStatus          PaymentStatus   @default(UNPAID) @map("payment_status")
+  paymentMethod          PaymentMethod   @map("payment_method")
+
+  // Customer snapshot
+  customerName      String  @map("customer_name")
+  customerEmail     String? @map("customer_email")
+  customerPhoneHash String  @map("customer_phone_hash")
+  deliveryAddress   String? @map("delivery_address")
+  customerNotes     String? @map("customer_notes")
+
+  // Monetary totals (integer minor units)
+  subtotal           BigInt
+  customizationTotal BigInt @default(0) @map("customization_total")
+  deliveryFee        BigInt @default(0) @map("delivery_fee")
+  discountTotal      BigInt @default(0) @map("discount_total")
+  total              BigInt
+  currency           String @default("VND")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  items         OrderItem[]
+  statusHistory OrderStatusHistory[]
+
+  @@map("orders")
+}
+
+model OrderStatusHistory {
+  id         String      @id @default(uuid())
+  orderId    String      @map("order_id")
+  fromStatus OrderStatus @map("from_status")
+  toStatus   OrderStatus @map("to_status")
+  actor      String?
+  reason     String?
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_status_history")
+}
+
+model OrderItem {
+  id      String  @id @default(uuid())
+  orderId String  @map("order_id")
+  dishId  String? @map("dish_id")
+
+  // Dish snapshot
+  dishNameSnapshot     String @map("dish_name_snapshot")
+  dishSlugSnapshot     String @map("dish_slug_snapshot")
+  dishCategorySnapshot String @map("dish_category_snapshot")
+
+  quantity           Int
+  basePriceSnapshot  BigInt  @map("base_price_snapshot")
+  customizationPrice BigInt  @default(0) @map("customization_price")
+  finalUnitPrice     BigInt  @map("final_unit_price")
+  lineTotal          BigInt  @map("line_total")
+  notes              String?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  dish  Dish? @relation(fields: [dishId], references: [id], onDelete: SetNull)
+
+  tasteCustomizations      OrderItemTasteCustomization[]
+  ingredientCustomizations OrderItemIngredientCustomization[]
+  substitutions            OrderItemSubstitution[]
+
+  @@map("order_items")
+}
+
+model OrderItemTasteCustomization {
+  id                         String @id @default(uuid())
+  orderItemId                String @map("order_item_id")
+  attributeCodeSnapshot      String @map("attribute_code_snapshot")
+  attributeNameSnapshot      String @map("attribute_name_snapshot")
+  selectedValue              Int    @map("selected_value")
+  customerLabelSnapshot      String @map("customer_label_snapshot")
+  kitchenInstructionSnapshot String @map("kitchen_instruction_snapshot")
+  priceDeltaSnapshot         BigInt @default(0) @map("price_delta_snapshot")
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@unique([orderItemId, attributeCodeSnapshot])
+  @@map("order_item_taste_customizations")
+}
+
+model OrderItemIngredientCustomization {
+  id                         String  @id @default(uuid())
+  orderItemId                String  @map("order_item_id")
+  ingredientId               String? @map("ingredient_id")
+  ingredientNameSnapshot     String  @map("ingredient_name_snapshot")
+  action                     String // INCREASED, DECREASED, REMOVED, ADDED
+  selectedQuantity           Decimal @map("selected_quantity") @db.Decimal(10, 2)
+  unit                       String
+  priceDeltaSnapshot         BigInt  @default(0) @map("price_delta_snapshot")
+  kitchenInstructionSnapshot String? @map("kitchen_instruction_snapshot")
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@unique([orderItemId, ingredientId])
+  @@map("order_item_ingredient_customizations")
+}
+
+model OrderItemSubstitution {
+  id                               String  @id @default(uuid())
+  orderItemId                      String  @map("order_item_id")
+  originalIngredientId             String? @map("original_ingredient_id")
+  originalIngredientNameSnapshot   String  @map("original_ingredient_name_snapshot")
+  substituteIngredientNameSnapshot String  @map("substitute_ingredient_name_snapshot")
+  priceDeltaSnapshot               BigInt  @default(0) @map("price_delta_snapshot")
+  kitchenInstructionSnapshot       String  @map("kitchen_instruction_snapshot")
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@unique([orderItemId, originalIngredientId])
+  @@map("order_item_substitutions")
+}
