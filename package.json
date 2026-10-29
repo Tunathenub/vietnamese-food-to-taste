@@ -1,0 +1,20 @@
+{
+  "name": "vietnamese-food-to-taste",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "db:generate": "pnpm --filter @vft/api db:generate",
+    "db:migrate": "pnpm --filter @vft/api db:migrate",
+    "db:seed": "pnpm --filter @vft/api db:seed",
+    "db:studio": "pnpm --filter @vft/api db:studio"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "turbo": "^2.11.7"
+  },
+  "packageManager": "pnpm@12.9.1"
+}
