@@ -32,6 +32,7 @@ async function main() {
       name: 'Vị chuẩn Việt Nam',
       type: TasteProfileType.COUNTRY,
       countryCode: 'VN',
+      dialCode: '+84',
       description: 'Hương vị truyền thống cân bằng, đậm đà nước mắm và rau thơm tươi.',
       defaults: {
         spice_level: 2,
@@ -47,6 +48,7 @@ async function main() {
       name: 'Khẩu vị Hàn Quốc (Korean-inspired)',
       type: TasteProfileType.COUNTRY,
       countryCode: 'KR',
+      dialCode: '+82',
       description: 'Tăng vị cay đậm đà, vị đậm đà vừa phải, giảm bớt mùi mắm nồng.',
       defaults: {
         spice_level: 4,
@@ -62,6 +64,7 @@ async function main() {
       name: 'Khẩu vị phương Tây dịu nhẹ (Western Mild)',
       type: TasteProfileType.COUNTRY,
       countryCode: 'US',
+      dialCode: '+1',
       description: 'Ít cay, dịu mùi nước mắm, rau thơm chọn lọc, vị thanh nhẹ.',
       defaults: {
         spice_level: 1,
@@ -77,6 +80,7 @@ async function main() {
       name: 'Khẩu vị Nhật Bản thanh tao (Japanese Delicate)',
       type: TasteProfileType.COUNTRY,
       countryCode: 'JP',
+      dialCode: '+81',
       description: 'Vị thanh ngọt tự nhiên, tối giản độ cay và mắm, giữ trọn hương vị nguyên bản.',
       defaults: {
         spice_level: 0,
@@ -96,6 +100,7 @@ async function main() {
         name: p.name,
         type: p.type,
         countryCode: p.countryCode,
+        dialCode: p.dialCode,
         description: p.description,
       },
       create: {
@@ -103,6 +108,7 @@ async function main() {
         name: p.name,
         type: p.type,
         countryCode: p.countryCode,
+        dialCode: p.dialCode,
         description: p.description,
       },
     });

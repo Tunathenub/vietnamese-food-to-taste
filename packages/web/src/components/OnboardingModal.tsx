@@ -21,23 +21,43 @@ export function OnboardingModal() {
     setError('');
 
     try {
-      const res = await api.post('/auth/onboard', { nationality }, {
+      interface OnboardResponse {
+        tastePreferences: Record<string, number>;
+        dietaryRestrictions: string[];
+      }
+
+      const res = await api.post<OnboardResponse>('/auth/onboard', { nationality }, {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       });
 
-      if (res.error) {
-        throw new Error(res.error.message || 'Có lỗi xảy ra');
+      if (res.error || !res.data) {
+        throw new Error(res.error?.message || 'Có lỗi xảy ra');
       }
 
       const { tastePreferences, dietaryRestrictions } = res.data;
 
       updateOnboarding(nationality, tastePreferences, dietaryRestrictions);
       
+      const guessDialCode = (nat: string): string => {
+        const lower = nat.toLowerCase();
+        if (lower.includes('hàn') || lower.includes('korea')) return '+82';
+        if (lower.includes('mỹ') || lower.includes('usa') || lower.includes('america')) return '+1';
+        if (lower.includes('nhật') || lower.includes('japan')) return '+81';
+        if (lower.includes('úc') || lower.includes('australia')) return '+61';
+        if (lower.includes('pháp') || lower.includes('france')) return '+33';
+        if (lower.includes('anh') || lower.includes('uk') || lower.includes('england')) return '+44';
+        if (lower.includes('singapore')) return '+65';
+        if (lower.includes('đức') || lower.includes('germany')) return '+49';
+        if (lower.includes('trung') || lower.includes('china')) return '+86';
+        return '+84';
+      };
+
       // Update the taste store to match the AI preferences
       setCustomProfile({
         code: 'CUSTOM_AI',
         name: `Khẩu vị ${nationality} (AI)`,
         countryCode: 'AI',
+        dialCode: guessDialCode(nationality),
         flag: '✨',
         description: 'Được hệ thống AI phân tích và tự động tối ưu dựa trên thói quen ẩm thực của quốc gia bạn.',
         defaults: tastePreferences,

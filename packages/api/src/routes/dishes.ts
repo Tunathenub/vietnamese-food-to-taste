@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { prisma } from '../lib/prisma.js';
 import type { ApiResponse } from '@vft/shared';
 
-export const dishRoutes = Router();
+export const dishRoutes: Router = Router();
 
 // GET /api/dishes
 dishRoutes.get('/', async (req, res, next) => {
@@ -43,12 +43,15 @@ dishRoutes.get('/', async (req, res, next) => {
       id: d.id,
       slug: d.slug,
       name: d.name,
-      shortDescription: d.shortDescription,
-      imageUrl: d.imageUrl,
+      description: d.description,
+      shortDescription: d.description ?? undefined,
+      imagePath: d.imagePath,
+      imageUrl: d.imagePath ?? undefined,
       category: d.category,
-      basePrice: Number(d.basePrice),
+      basePrice: Number(d.basePriceMinor),
       currency: d.currency,
-      preparationTimeMinutes: d.preparationTimeMinutes,
+      prepTimeMinutes: d.prepTimeMinutes,
+      preparationTimeMinutes: d.prepTimeMinutes ?? undefined,
       isAvailable: d.isAvailable,
     }));
 
@@ -158,13 +161,15 @@ dishRoutes.get('/:dishIdOrSlug', async (req, res, next) => {
       id: dish.id,
       slug: dish.slug,
       name: dish.name,
-      shortDescription: dish.shortDescription,
       description: dish.description,
-      imageUrl: dish.imageUrl,
+      shortDescription: dish.description ?? undefined,
+      imagePath: dish.imagePath,
+      imageUrl: dish.imagePath ?? undefined,
       category: dish.category,
-      basePrice: Number(dish.basePrice),
+      basePrice: Number(dish.basePriceMinor),
       currency: dish.currency,
-      preparationTimeMinutes: dish.preparationTimeMinutes,
+      prepTimeMinutes: dish.prepTimeMinutes,
+      preparationTimeMinutes: dish.prepTimeMinutes ?? undefined,
       isAvailable: dish.isAvailable,
       tasteConfigurations,
       ingredients,
@@ -390,7 +395,7 @@ dishRoutes.post('/:dishId/validate-customization', async (req, res, next) => {
       customizationPrice += Number(sub.priceDelta);
     }
 
-    const basePrice = Number(dish.basePrice);
+    const basePrice = Number(dish.basePriceMinor);
     const finalUnitPrice = Math.max(0, basePrice + customizationPrice);
 
     // Compute normalized hash

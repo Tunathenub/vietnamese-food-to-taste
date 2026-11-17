@@ -21,6 +21,7 @@ code           string UNIQUE
 name           string
 type           enum COUNTRY | REGION | CUSTOM
 country_code   string nullable
+dial_code      string nullable
 description    string nullable
 is_active      boolean
 ```

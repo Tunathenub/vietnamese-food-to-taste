@@ -50,6 +50,13 @@ export const UserRole = {
 } as const;
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 
+export const ContactChannel = {
+  PHONE_CALL: 'PHONE_CALL',
+  WHATSAPP: 'WHATSAPP',
+  ZALO: 'ZALO',
+} as const;
+export type ContactChannel = (typeof ContactChannel)[keyof typeof ContactChannel];
+
 // ── API Response Types ──
 
 export interface ApiResponse<T> {
@@ -87,6 +94,7 @@ export interface TasteProfileSummary {
   name: string;
   type: TasteProfileType;
   countryCode: string | null;
+  dialCode: string | null;
   description: string | null;
 }
 
@@ -167,6 +175,16 @@ export interface OrderSummary {
   discountTotal: number;
   total: number;
   currency: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerDialCode?: string | null;
+  customerCountryCode?: string | null;
+  preferredContactChannel?: ContactChannel;
+  isWhatsAppAvailable?: boolean;
+  hotelOrBuildingName?: string | null;
+  roomOrFloorNumber?: string | null;
+  deliveryAddress?: string | null;
+  whatsAppDirectUrl?: string | null;
   createdAt: string;
 }
 

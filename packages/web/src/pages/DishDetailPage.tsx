@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router';
 import { useTasteStore } from '../stores/taste-store';
 import { useCartStore } from '../stores/cart-store';
+import { useAuthStore } from '../stores/auth-store';
 import { api } from '../lib/api-client';
 
 interface DishDetailData {
@@ -233,6 +234,7 @@ export function DishDetailPage() {
 
   const handleAddToCart = () => {
     if (!dish) return;
+
     addItem({
       dishId: dish.id,
       dishName: dish.name,
@@ -247,6 +249,24 @@ export function DishDetailPage() {
     });
     setAddedToast(true);
     setTimeout(() => setAddedToast(false), 3000);
+  };
+
+  const handleBuyNow = () => {
+    if (!dish) return;
+
+    addItem({
+      dishId: dish.id,
+      dishName: dish.name,
+      dishSlug: dish.slug,
+      quantity,
+      basePrice: dish.basePrice + customizationDelta,
+      currency: 'VND',
+      tasteValues,
+      ingredientQuantities,
+      substitutionIds: selectedSubstitutions,
+      notes,
+    });
+    navigate('/checkout');
   };
 
   if (error) {
@@ -482,15 +502,27 @@ export function DishDetailPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2.5">
                   <div className="flex items-center rounded-xl border border-gray-200 bg-slate-50 p-1">
                     <button type="button" onClick={() => setQuantity((q) => Math.max(1, q - 1))} className="h-8 w-8 rounded-lg font-bold text-gray-700 hover:bg-gray-200">-</button>
                     <span className="w-8 text-center text-sm font-bold">{quantity}</span>
                     <button type="button" onClick={() => setQuantity((q) => q + 1)} className="h-8 w-8 rounded-lg font-bold text-gray-700 hover:bg-gray-200">+</button>
                   </div>
 
-                  <button type="button" onClick={handleAddToCart} className="flex-1 sm:flex-none rounded-xl bg-orange-600 px-7 py-3 text-sm font-bold text-white shadow-md hover:bg-orange-700 transition">
+                  <button
+                    type="button"
+                    onClick={handleAddToCart}
+                    className="flex-1 sm:flex-none rounded-xl bg-orange-100 hover:bg-orange-200 text-orange-950 border border-orange-300 px-4 py-2.5 text-xs font-bold transition shadow-2xs"
+                  >
                     Thêm vào giỏ 🛒
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleBuyNow}
+                    className="flex-1 sm:flex-none rounded-xl bg-orange-600 hover:bg-orange-700 px-5 py-2.5 text-xs font-bold text-white shadow-md transition"
+                  >
+                    ⚡ Đặt ngay (Khách vãng lai) →
                   </button>
                 </div>
               </div>

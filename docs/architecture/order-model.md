@@ -56,6 +56,14 @@ DELIVERY
 PICKUP
 ```
 
+### Preferred Contact Channel
+
+```text
+PHONE_CALL
+WHATSAPP
+ZALO
+```
+
 ### Recommendation Source
 
 ```text
@@ -137,6 +145,12 @@ ORDERS
 - customer_email           string nullable
 - customer_phone           string
 - customer_phone_lookup_hmac string INDEX
+- customer_dial_code       string nullable
+- customer_country_code    string nullable
+- preferred_contact_channel ContactChannel DEFAULT 'PHONE_CALL'
+- is_whatsapp_available   boolean DEFAULT false
+- hotel_or_building_name   string nullable
+- room_or_floor_number     string nullable
 - delivery_address         string nullable
 - customer_notes           string nullable
 - cancellation_reason      string nullable
@@ -154,6 +168,10 @@ ORDERS
 - `user_id` is nullable to support guest checkout.
 - `delivery_address` is required when `fulfillment_type = DELIVERY`.
 - `delivery_address` may be null when `fulfillment_type = PICKUP`.
+- `customer_dial_code` stores the international calling code (e.g. `+82`, `+1`, `+84`), pre-populated from the customer's selected taste profile country code.
+- `customer_phone` stores the local or E.164 phone number.
+- `preferred_contact_channel` indicates whether the delivery driver/kitchen should reach the customer via `PHONE_CALL`, `WHATSAPP`, or `ZALO`. When `is_whatsapp_available = true`, the system generates a direct link (`https://wa.me/...`) for zero-cost messaging without requiring the driver to save the number.
+- `hotel_or_building_name` and `room_or_floor_number` provide specific location context for tourists and high-rise apartment dwellers, facilitating front-desk drop-off for prepaid orders when direct customer voice contact is delayed.
 - `customer_phone_lookup_hmac` is derived from the normalized phone number with a server-side secret for indexed guest lookup; staff still use the protected phone snapshot when operationally required.
 - Monetary values are calculated by the backend.
 - Every monetary column stores integer minor units. For VND, one stored unit is one đồng.

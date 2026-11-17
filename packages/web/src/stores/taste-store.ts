@@ -5,6 +5,7 @@ export interface TasteProfileInfo {
   code: string;
   name: string;
   countryCode: string;
+  dialCode: string;
   flag: string;
   description: string;
   defaults: Record<string, number>;
@@ -15,6 +16,7 @@ export const PRESET_PROFILES: TasteProfileInfo[] = [
     code: 'AUTHENTIC_VN',
     name: 'Vị chuẩn Việt Nam',
     countryCode: 'VN',
+    dialCode: '+84',
     flag: '🇻🇳',
     description: 'Hương vị truyền thống cân bằng, đậm đà nước mắm và rau thơm tươi.',
     defaults: {
@@ -30,6 +32,7 @@ export const PRESET_PROFILES: TasteProfileInfo[] = [
     code: 'KR_INSPIRED',
     name: 'Khẩu vị Hàn Quốc (Korean-style)',
     countryCode: 'KR',
+    dialCode: '+82',
     flag: '🇰🇷',
     description: 'Tăng vị cay nồng ấm, giảm mùi mắm nồng, hương vị đậm đà kích thích vị giác.',
     defaults: {
@@ -45,6 +48,7 @@ export const PRESET_PROFILES: TasteProfileInfo[] = [
     code: 'WESTERN_MILD',
     name: 'Phương Tây dịu nhẹ (Western Mild)',
     countryCode: 'US',
+    dialCode: '+1',
     flag: '🇺🇸',
     description: 'Ít cay, dịu mùi mắm, gia vị thanh nhẹ hài hòa, rau thơm chọn lọc.',
     defaults: {
@@ -60,6 +64,7 @@ export const PRESET_PROFILES: TasteProfileInfo[] = [
     code: 'JP_DELICATE',
     name: 'Nhật Bản thanh tao (Japanese Delicate)',
     countryCode: 'JP',
+    dialCode: '+81',
     flag: '🇯🇵',
     description: 'Vị thanh ngọt tự nhiên của nước dùng, tối giản cay và mắm, tôn vinh độ tươi của thịt.',
     defaults: {

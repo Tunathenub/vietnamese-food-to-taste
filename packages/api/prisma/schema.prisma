@@ -23,12 +23,15 @@ model User {
   email                   String        @unique
   passwordHash            String        @default("") @map("password_hash")
   name                    String        @default("")
+  phone                   String?       @map("phone")
   nationality             String?
   dietaryRestrictions     String?       @map("dietary_restrictions")
   tastePreferences        String?       @map("taste_preferences")
   role                    UserRole      @default(CUSTOMER)
   preferredTasteProfileId String?       @map("preferred_taste_profile_id")
   preferredTasteProfile   TasteProfile? @relation(fields: [preferredTasteProfileId], references: [id], onDelete: SetNull)
+  resetPasswordToken      String?       @map("reset_password_token")
+  resetPasswordExpires    DateTime?     @map("reset_password_expires")
   createdAt               DateTime      @default(now()) @map("created_at")
   updatedAt               DateTime      @updatedAt @map("updated_at")
 
@@ -51,6 +54,7 @@ model TasteProfile {
   name        String
   type        TasteProfileType
   countryCode String?               @map("country_code")
+  dialCode    String?               @map("dial_code")
   description String?
   isActive    Boolean               @default(true) @map("is_active")
   defaults    TasteProfileDefault[]
@@ -293,11 +297,17 @@ model Order {
   paymentMethod          PaymentMethod   @map("payment_method")
 
   // Customer snapshot
-  customerName      String  @map("customer_name")
-  customerEmail     String? @map("customer_email")
-  customerPhoneHash String  @map("customer_phone_hash")
-  deliveryAddress   String? @map("delivery_address")
-  customerNotes     String? @map("customer_notes")
+  customerName            String  @map("customer_name")
+  customerEmail           String? @map("customer_email")
+  customerPhoneHash       String  @map("customer_phone_hash")
+  customerDialCode        String? @map("customer_dial_code")
+  customerCountryCode     String? @map("customer_country_code")
+  preferredContactChannel String  @default("PHONE_CALL") @map("preferred_contact_channel")
+  isWhatsAppAvailable     Boolean @default(false) @map("is_whatsapp_available")
+  hotelOrBuildingName     String? @map("hotel_or_building_name")
+  roomOrFloorNumber       String? @map("room_or_floor_number")
+  deliveryAddress         String? @map("delivery_address")
+  customerNotes           String? @map("customer_notes")
 
   // Monetary totals (integer minor units)
   subtotal           BigInt

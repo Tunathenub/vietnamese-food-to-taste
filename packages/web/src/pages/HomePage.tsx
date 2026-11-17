@@ -38,8 +38,8 @@ export function HomePage() {
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-100 text-orange-700 text-sm font-semibold mb-6">
           <span>✨</span> Ý tưởng độc đáo: Món Việt nêm theo gu quốc tế
         </div>
-        <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight mb-6">
-          Hương vị Việt Nam <br />
+        <h1 className="text-4xl sm:text-6xl font-extrabold mb-8 flex flex-col gap-4 leading-normal sm:leading-tight">
+          <span>Hương vị Việt Nam</span>
           <span className="text-orange-600">Chuẩn vị theo khẩu vị của bạn</span>
         </h1>
         <p className="max-w-2xl text-lg text-gray-600 mb-10">
