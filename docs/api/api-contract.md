@@ -114,6 +114,7 @@ GET /api/taste-profiles
         "name": "Korean-inspired",
         "type": "COUNTRY",
         "countryCode": "KR",
+        "dialCode": "+82",
         "description": "A suggested starting point that can be changed.",
         "attributes": {
           "spice_level": 4,
@@ -441,12 +442,18 @@ Idempotency-Key: client-generated-uuid
   "customer": {
     "name": "John Smith",
     "email": "john@example.com",
-    "phone": "0912345678",
-    "deliveryAddress": "12 Example Street, Hanoi"
+    "dialCode": "+82",
+    "phone": "1012345678",
+    "countryCode": "KR",
+    "preferredContactChannel": "WHATSAPP",
+    "isWhatsAppAvailable": true,
+    "hotelOrBuildingName": "Daewoo Hotel",
+    "roomOrFloorNumber": "Room 402",
+    "deliveryAddress": "360 Kim Mã, Ba Đình, Hà Nội"
   },
   "fulfillmentType": "DELIVERY",
   "paymentMethod": "CASH_ON_DELIVERY",
-  "customerNotes": "Please call when arriving.",
+  "customerNotes": "Please drop at lobby reception if unreachable.",
   "items": [
     {
       "dishId": "dish-id",
@@ -602,7 +609,36 @@ GET /api/staff/orders?status=PENDING
 GET /api/staff/orders/:orderNumber
 ```
 
-The staff response may include kitchen instruction snapshots.
+The staff response includes kitchen instruction snapshots, customer phone with international dial code, and direct messaging helpers:
+
+```json
+{
+  "data": {
+    "order": {
+      "orderNumber": "VFT-20261117-001",
+      "status": "PENDING",
+      "paymentStatus": "PAID",
+      "fulfillmentType": "DELIVERY",
+      "customer": {
+        "name": "Min-jun Kim",
+        "phone": "+82 10-1234-5678",
+        "dialCode": "+82",
+        "countryCode": "KR",
+        "preferredContactChannel": "WHATSAPP",
+        "isWhatsAppAvailable": true,
+        "whatsAppDirectUrl": "https://wa.me/821012345678",
+        "hotelOrBuildingName": "Daewoo Hotel",
+        "roomOrFloorNumber": "Room 402",
+        "deliveryAddress": "360 Kim Mã, Ba Đình, Hà Nội"
+      },
+      "items": []
+    }
+  },
+  "error": null
+}
+```
+
+Drivers and front-of-house staff can click `whatsAppDirectUrl` to message international customers directly without saving contacts to phone storage. For prepaid hotel deliveries, the `hotelOrBuildingName` and `roomOrFloorNumber` allow immediate front-desk drop-off if customer phone contact fails.
 
 ### 10.3 Change Order Status
 

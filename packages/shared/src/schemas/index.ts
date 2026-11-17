@@ -23,6 +23,12 @@ export const customerSchema = z.object({
   name: z.string().min(1).max(100),
   email: z.string().email().max(254).optional(),
   phone: z.string().min(1).max(30),
+  dialCode: z.string().max(10).optional().default('+84'),
+  countryCode: z.string().max(10).optional(),
+  preferredContactChannel: z.enum(['PHONE_CALL', 'WHATSAPP', 'ZALO']).optional().default('PHONE_CALL'),
+  isWhatsAppAvailable: z.boolean().optional().default(false),
+  hotelOrBuildingName: z.string().max(200).optional(),
+  roomOrFloorNumber: z.string().max(50).optional(),
   deliveryAddress: z.string().max(500).optional(),
 });
 

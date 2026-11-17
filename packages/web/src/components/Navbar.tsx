@@ -14,6 +14,7 @@ export function Navbar() {
     { to: '/taste-profiles', label: 'Gu khẩu vị' },
     { to: '/menu', label: 'Thực đơn' },
     { to: '/orders/lookup', label: 'Tra cứu đơn' },
+    { to: '/staff/orders', label: '👨‍🍳 Bếp & Quản trị' },
   ];
 
   return (
@@ -38,7 +39,7 @@ export function Navbar() {
                 to={link.to}
                 className={`text-sm font-semibold transition-colors ${
                   isActive ? 'text-orange-600' : 'text-gray-600 hover:text-gray-900'
-                }`}
+                } ${link.to.startsWith('/staff') ? 'bg-slate-100 px-2.5 py-1 rounded-lg text-slate-800 hover:bg-slate-200' : ''}`}
               >
                 {link.label}
               </Link>
@@ -49,22 +50,33 @@ export function Navbar() {
         <div className="flex items-center gap-3">
           {user ? (
             <div className="flex items-center gap-2 mr-2">
-              <span className="text-sm font-medium text-gray-700 hidden sm:inline">
-                👋 {user.name}
-              </span>
+              <Link
+                to="/profile"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-700 hover:text-orange-600 transition"
+              >
+                <span>👋</span>
+                <span className="max-w-[120px] truncate">{user.name}</span>
+                {user.role === 'STAFF' && (
+                  <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md border border-amber-300">
+                    Bếp
+                  </span>
+                )}
+              </Link>
               <button
                 onClick={logout}
-                className="text-xs font-semibold text-gray-500 hover:text-red-600 transition"
+                className="text-xs font-semibold text-gray-400 hover:text-red-600 transition ml-1"
+                title="Đăng xuất"
               >
-                Đăng xuất
+                Thoát
               </button>
             </div>
           ) : (
             <Link
               to="/auth"
-              className="mr-2 text-sm font-semibold text-gray-700 hover:text-orange-600 transition"
+              className="mr-1 inline-flex items-center gap-1 text-sm font-bold text-gray-700 hover:text-orange-600 transition px-2.5 py-1.5 rounded-lg hover:bg-gray-50 border border-transparent hover:border-gray-200"
             >
-              Đăng nhập
+              <span>🔑</span>
+              <span>Đăng nhập</span>
             </Link>
           )}
 

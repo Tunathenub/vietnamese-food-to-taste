@@ -4,7 +4,7 @@ import { changeOrderStatusSchema } from '@vft/shared/schemas';
 import { validate } from '../middleware/validate.js';
 import type { OrderStatus } from '@vft/shared';
 
-export const staffRoutes = Router();
+export const staffRoutes: Router = Router();
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   PENDING: ['CONFIRMED', 'CANCELLED'],
@@ -41,7 +41,13 @@ staffRoutes.get('/orders', async (req, res, next) => {
       paymentStatus: o.paymentStatus,
       fulfillmentType: o.fulfillmentType,
       customerName: o.customerName,
-      customerPhone: o.customerPhone,
+      customerPhone: o.customerPhoneHash,
+      customerDialCode: o.customerDialCode,
+      customerCountryCode: o.customerCountryCode,
+      preferredContactChannel: o.preferredContactChannel,
+      isWhatsAppAvailable: o.isWhatsAppAvailable,
+      hotelOrBuildingName: o.hotelOrBuildingName,
+      roomOrFloorNumber: o.roomOrFloorNumber,
       deliveryAddress: o.deliveryAddress,
       total: Number(o.total),
       currency: o.currency,
@@ -86,10 +92,10 @@ staffRoutes.get('/orders/:orderNumber', async (req, res, next) => {
       quantity: i.quantity,
       finalUnitPrice: Number(i.finalUnitPrice),
       lineTotal: Number(i.lineTotal),
-      specialNotes: i.specialNotes,
+      specialNotes: i.notes,
       tasteCustomizations: i.tasteCustomizations.map((tc) => ({
         attribute: tc.attributeNameSnapshot,
-        chosenValue: tc.chosenValue,
+        chosenValue: tc.selectedValue,
         customerLabel: tc.customerLabelSnapshot,
         kitchenInstruction: tc.kitchenInstructionSnapshot,
       })),
@@ -97,15 +103,22 @@ staffRoutes.get('/orders/:orderNumber', async (req, res, next) => {
         ingredient: ic.ingredientNameSnapshot,
         action: ic.action,
         selectedQuantity: Number(ic.selectedQuantity),
-        unit: ic.unitSnapshot,
+        unit: ic.unit,
         kitchenInstruction: ic.kitchenInstructionSnapshot,
       })),
       substitutions: i.substitutions.map((sub) => ({
-        original: sub.originalIngredientSnapshot,
-        substitute: sub.substituteIngredientSnapshot,
+        original: sub.originalIngredientNameSnapshot,
+        substitute: sub.substituteIngredientNameSnapshot,
         kitchenInstruction: sub.kitchenInstructionSnapshot,
       })),
     }));
+
+    const cleanDial = (order.customerDialCode ?? '').replace(/[^0-9]/g, '');
+    const cleanPhone = (order.customerPhoneHash ?? '').replace(/[^0-9]/g, '');
+    const fullPhone = cleanDial ? `+${cleanDial}${cleanPhone}` : cleanPhone;
+    const whatsAppDirectUrl = (order.isWhatsAppAvailable || order.preferredContactChannel === 'WHATSAPP') && fullPhone
+      ? `https://wa.me/${cleanDial}${cleanPhone}`
+      : null;
 
     res.json({
       data: {
@@ -120,16 +133,23 @@ staffRoutes.get('/orders/:orderNumber', async (req, res, next) => {
         total: Number(order.total),
         currency: order.currency,
         customerName: order.customerName,
-        customerPhone: order.customerPhone,
-        customerEmail: order.customerEmail,
+        customerPhone: order.customerPhoneHash,
+        customerDialCode: order.customerDialCode,
+        customerCountryCode: order.customerCountryCode,
+        preferredContactChannel: order.preferredContactChannel,
+        isWhatsAppAvailable: order.isWhatsAppAvailable,
+        hotelOrBuildingName: order.hotelOrBuildingName,
+        roomOrFloorNumber: order.roomOrFloorNumber,
+        whatsAppDirectUrl,
         deliveryAddress: order.deliveryAddress,
         customerNotes: order.customerNotes,
-        cancellationReason: order.cancellationReason,
+        cancellationReason: order.statusHistory.find((h) => h.toStatus === 'CANCELLED')?.reason ?? null,
         items,
         statusHistory: order.statusHistory.map((h) => ({
           fromStatus: h.fromStatus,
           toStatus: h.toStatus,
-          actorType: h.actorType,
+          actor: h.actor,
+          actorType: h.actor ?? 'STAFF',
           reason: h.reason,
           createdAt: h.createdAt.toISOString(),
         })),
@@ -146,7 +166,7 @@ staffRoutes.get('/orders/:orderNumber', async (req, res, next) => {
 // PATCH /api/staff/orders/:orderNumber/status
 staffRoutes.patch('/orders/:orderNumber/status', validate(changeOrderStatusSchema), async (req, res, next) => {
   try {
-    const { orderNumber } = req.params;
+    const orderNumber = String(req.params.orderNumber);
     const { status: targetStatus, reason } = req.body;
 
     const order = await prisma.order.findUnique({
@@ -179,22 +199,12 @@ staffRoutes.patch('/orders/:orderNumber/status', validate(changeOrderStatusSchem
     }
 
     const updated = await prisma.$transaction(async (tx) => {
-      const timestampUpdates: any = {};
-      if (targetStatus === 'CONFIRMED') timestampUpdates.confirmedAt = new Date();
-      if (targetStatus === 'PREPARING') timestampUpdates.preparationStartedAt = new Date();
-      if (targetStatus === 'READY') timestampUpdates.readyAt = new Date();
-      if (targetStatus === 'COMPLETED') timestampUpdates.completedAt = new Date();
-      if (targetStatus === 'CANCELLED') {
-        timestampUpdates.cancelledAt = new Date();
-        timestampUpdates.cancellationReason = reason;
-      }
-
       await tx.orderStatusHistory.create({
         data: {
           orderId: order.id,
           fromStatus: order.status as OrderStatus,
           toStatus: targetStatus as OrderStatus,
-          actorType: 'STAFF',
+          actor: 'STAFF',
           reason: reason ?? `Status changed to ${targetStatus}`,
         },
       });
@@ -203,7 +213,6 @@ staffRoutes.patch('/orders/:orderNumber/status', validate(changeOrderStatusSchem
         where: { id: order.id },
         data: {
           status: targetStatus,
-          ...timestampUpdates,
         },
       });
     });

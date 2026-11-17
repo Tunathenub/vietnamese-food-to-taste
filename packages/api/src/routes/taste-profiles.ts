@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import type { ApiResponse, TasteProfileDetail } from '@vft/shared';
 
-export const tasteProfileRoutes = Router();
+export const tasteProfileRoutes: Router = Router();
 
 // GET /api/taste-profiles
 tasteProfileRoutes.get('/', async (_req, res, next) => {
@@ -31,6 +31,7 @@ tasteProfileRoutes.get('/', async (_req, res, next) => {
         name: p.name,
         type: p.type as any,
         countryCode: p.countryCode,
+        dialCode: p.dialCode,
         description: p.description,
         attributes,
       };
@@ -81,6 +82,7 @@ tasteProfileRoutes.get('/:code', async (req, res, next) => {
       name: profile.name,
       type: profile.type as any,
       countryCode: profile.countryCode,
+      dialCode: profile.dialCode,
       description: profile.description,
       attributes,
     };

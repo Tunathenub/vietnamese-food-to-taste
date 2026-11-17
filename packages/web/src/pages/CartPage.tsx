@@ -1,9 +1,15 @@
 import { Link, useNavigate } from 'react-router';
 import { useCartStore } from '../stores/cart-store';
+import { useAuthStore } from '../stores/auth-store';
 
 export function CartPage() {
   const navigate = useNavigate();
   const { items, updateQuantity, removeItem, clearCart } = useCartStore();
+  const user = useAuthStore((state) => state.user);
+
+  const handleCheckoutClick = () => {
+    navigate('/checkout');
+  };
 
   const subtotal = items.reduce((sum, item) => sum + item.basePrice * item.quantity, 0);
 
@@ -161,11 +167,21 @@ export function CartPage() {
 
                 <button
                   type="button"
-                  onClick={() => navigate('/checkout')}
+                  onClick={handleCheckoutClick}
                   className="w-full rounded-xl bg-orange-600 py-3.5 text-sm font-bold text-white shadow-md hover:bg-orange-700 transition"
                 >
-                  Tiến hành Đặt hàng →
+                  {user ? 'Tiến hành Đặt hàng →' : 'Tiến hành Đặt hàng (Khách vãng lai) →'}
                 </button>
+
+                {!user && (
+                  <p className="mt-2 text-center text-[11px] text-gray-500">
+                    💡 Đặt hàng không cần tài khoản, hoặc{' '}
+                    <Link to="/auth?redirect=/checkout" className="text-orange-600 font-semibold hover:underline">
+                      Đăng nhập
+                    </Link>{' '}
+                    để lưu hồ sơ khẩu vị.
+                  </p>
+                )}
 
                 <Link
                   to="/menu"

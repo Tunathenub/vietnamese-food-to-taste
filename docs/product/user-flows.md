@@ -52,6 +52,7 @@ Allow the user to choose a suggested taste profile before viewing the menu.
 - Personal values override profile defaults.
 - Profile defaults override dish base values.
 - Skipping profile selection is allowed.
+- **Country & Phone Dial Code Linking**: When a user selects a country or regional taste profile, the client session retains the profile's `country_code` (e.g., `KR`, `US`, `JP`, `VN`) and corresponding international calling code (`dial_code`, e.g., `+82`, `+1`, `+81`, `+84`). This dial code automatically pre-selects the customer's phone prefix at Checkout, eliminating manual country lookup for international tourists.
 
 ### Alternative Flow: Skip Selection
 
@@ -256,11 +257,27 @@ Allow an order to be placed without requiring account creation.
 ### Required Customer Information
 
 - Customer name.
-- Customer phone.
-- Fulfillment type.
-- Delivery address when fulfillment type is delivery.
+- Customer phone number with country dial code (e.g. `+84`, `+82`, `+1`).
+- Preferred contact channel (`PHONE_CALL`, `WHATSAPP`, `ZALO`).
+- Fulfillment type (`DELIVERY` or `PICKUP`).
+- Delivery address when fulfillment type is delivery, with structured hotel/building guidance:
+  - Street address.
+  - Hotel / Building / Apartment complex name (crucial for tourists and serviced apartments).
+  - Room / Floor number.
 
 Email is optional for the MVP.
+
+### International Tourist Contact & Dial Code Rules
+
+1. **Smart Dial Code Pre-Fill**:
+   - The phone input's country dial code defaults to the calling code derived from the customer's selected taste profile (e.g., `+82` for Korea, `+81` for Japan, `+1` for USA/Canada, `+84` for Vietnam).
+   - The customer can manually override the dial code dropdown if they are using a local tourist SIM (e.g. a Vietnamese `+84` physical SIM).
+2. **Alternative Messaging Channels (WhatsApp / Zalo)**:
+   - International tourists frequently rely on data-only tourist eSIMs (Airalo, Holafly, Nomad) without voice roaming or SMS reception.
+   - The checkout interface includes a contact channel selector: `[x] Reach me via WhatsApp` (auto-selected for foreign dial codes) or `Zalo` (for domestic Vietnamese numbers).
+   - This ensures delivery drivers and restaurant staff can contact international diners via internet messaging and VoIP calls at zero roaming cost.
+3. **Prepaid Hotel Reception Drop-off**:
+   - For orders prepaid online, direct voice contact is not a blocking requirement. If the customer is unreachable upon arrival, the delivery person can safely drop off the order at the hotel lobby reception or building security desk using the documented Hotel & Room details.
 
 ### Happy Path
 
@@ -362,6 +379,17 @@ CONFIRMED -> CANCELLED
 ```
 
 Direct status changes that skip required stages should be rejected unless an administrator override is introduced later.
+
+### Driver & Staff Communication Protocol
+
+1. **International Customer Contact**:
+   - The staff order detail screen surfaces the customer's phone number with full international dialing formatting (e.g., `+82 10-1234-5678`).
+   - If the customer flagged WhatsApp availability, the UI provides a one-click direct WhatsApp link (`https://wa.me/<phone_without_plus>`), allowing drivers or front desk staff to initiate chat or VoIP calling without saving the contact to the phone address book.
+2. **Hotel Drop-off & Notification**:
+   - For prepaid orders where the customer does not answer phone calls within 5 minutes of arrival:
+     - Driver drops the package at the hotel front desk or reception desk with room number tagged.
+     - Driver uploads proof of drop-off note or notifies reception to ring the room.
+     - System status advances to `COMPLETED` once delivered to the building reception.
 
 ---
 

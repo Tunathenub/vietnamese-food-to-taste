@@ -5,7 +5,7 @@ import { createOrderSchema, orderLookupSchema } from '@vft/shared/schemas';
 import { prisma } from '../lib/prisma.js';
 import type { ApiResponse, OrderSummary } from '@vft/shared';
 
-export const orderRoutes = Router();
+export const orderRoutes: Router = Router();
 
 // Helper to compute phone lookup hash
 function hashPhone(phone: string): string {
@@ -71,7 +71,7 @@ orderRoutes.post('/', validate(createOrderSchema), async (req, res, next) => {
     // Execute transaction
     const createdOrder = await prisma.$transaction(async (tx) => {
       // 1. Fetch dishes
-      const dishIds = [...new Set(items.map((i: any) => i.dishId))];
+      const dishIds: string[] = Array.from(new Set<string>(items.map((i: any) => String(i.dishId))));
       const dishes = await tx.dish.findMany({
         where: { id: { in: dishIds }, deletedAt: null },
         include: {
@@ -104,7 +104,7 @@ orderRoutes.post('/', validate(createOrderSchema), async (req, res, next) => {
 
       for (const item of items) {
         const dish = dishMap.get(item.dishId)!;
-        const baseUnitPrice = Number(dish.basePrice);
+        const baseUnitPrice = Number(dish.basePriceMinor);
         let customizationUnitPrice = 0;
 
         const tasteCustomizationsToCreate: any[] = [];
@@ -114,7 +114,7 @@ orderRoutes.post('/', validate(createOrderSchema), async (req, res, next) => {
         // Taste
         for (const [code, val] of Object.entries(item.tasteValues ?? {})) {
           const numVal = Number(val);
-          const config = dish.tasteConfigurations.find((c) => c.attribute.code === code);
+          const config = dish.tasteConfigurations.find((c: any) => c.attribute.code === code);
           if (!config) {
             throw { status: 422, code: 'INVALID_TASTE_ATTRIBUTE', message: `Invalid taste attribute ${code}.` };
           }
@@ -122,30 +122,24 @@ orderRoutes.post('/', validate(createOrderSchema), async (req, res, next) => {
             throw { status: 422, code: 'INVALID_TASTE_VALUE', message: `${config.attribute.name} out of bounds.` };
           }
 
-          const opt = config.options.find((o) => o.value === numVal);
+          const opt = config.options.find((o: any) => o.value === numVal);
           const priceDelta = opt ? Number(opt.priceDelta) : 0;
           customizationUnitPrice += priceDelta;
 
           tasteCustomizationsToCreate.push({
-            tasteAttributeId: config.attributeId,
             attributeCodeSnapshot: config.attribute.code,
             attributeNameSnapshot: config.attribute.name,
-            recommendationSource: item.tasteProfileCode ? 'TASTE_PROFILE' : 'MANUAL',
-            sourceValue: numVal,
-            baseValue: config.baseValue,
-            minValue: config.minValue,
-            maxValue: config.maxValue,
-            chosenValue: numVal,
+            selectedValue: numVal,
             customerLabelSnapshot: opt?.customerLabel ?? `Mức ${numVal}`,
             kitchenInstructionSnapshot: opt?.kitchenInstruction ?? `Set ${code}=${numVal}`,
-            priceDelta: BigInt(priceDelta),
+            priceDeltaSnapshot: BigInt(priceDelta),
           });
         }
 
         // Ingredients
         for (const [ingId, qty] of Object.entries(item.ingredientQuantities ?? {})) {
           const numQty = Number(qty);
-          const di = dish.ingredients.find((i) => i.ingredientId === ingId || i.ingredient.code === ingId);
+          const di = dish.ingredients.find((i: any) => i.ingredientId === ingId || i.ingredient.code === ingId);
           if (!di) {
             throw { status: 422, code: 'INGREDIENT_NOT_IN_DISH', message: `Ingredient ${ingId} not in dish.` };
           }
@@ -172,18 +166,16 @@ orderRoutes.post('/', validate(createOrderSchema), async (req, res, next) => {
             ingredientId: di.ingredientId,
             ingredientNameSnapshot: di.ingredient.name,
             action,
-            originalQuantity: di.defaultQuantity,
             selectedQuantity: numQty,
-            unitSnapshot: di.unit,
-            unitPriceDelta: di.priceDeltaPerStep,
-            totalPriceDelta: BigInt(priceDelta),
+            unit: di.unit,
+            priceDeltaSnapshot: BigInt(priceDelta),
             kitchenInstructionSnapshot: `${action} ${di.ingredient.name} to ${numQty} ${di.unit}`,
           });
         }
 
         // Substitutions
         for (const subId of item.substitutionIds ?? []) {
-          const sub = dish.substitutions.find((s) => s.id === subId);
+          const sub = dish.substitutions.find((s: any) => s.id === subId);
           if (!sub || !sub.isAvailable) {
             throw { status: 422, code: 'INVALID_SUBSTITUTION', message: `Substitution ${subId} unavailable.` };
           }
@@ -191,13 +183,10 @@ orderRoutes.post('/', validate(createOrderSchema), async (req, res, next) => {
           customizationUnitPrice += priceDelta;
 
           substitutionsToCreate.push({
-            substitutionRuleId: sub.id,
             originalIngredientId: sub.originalIngredientId,
-            substituteIngredientId: sub.substituteIngredientId,
-            originalIngredientSnapshot: sub.originalIngredient.name,
-            substituteIngredientSnapshot: sub.substituteIngredient.name,
-            reasonSnapshot: sub.reason,
-            priceDelta: sub.priceDelta,
+            originalIngredientNameSnapshot: sub.originalIngredient.name,
+            substituteIngredientNameSnapshot: sub.substituteIngredient.name,
+            priceDeltaSnapshot: sub.priceDelta,
             kitchenInstructionSnapshot: sub.kitchenInstruction,
           });
         }
@@ -212,13 +201,13 @@ orderRoutes.post('/', validate(createOrderSchema), async (req, res, next) => {
           dishId: dish.id,
           dishNameSnapshot: dish.name,
           dishSlugSnapshot: dish.slug,
-          dishImageSnapshot: dish.imageUrl,
+          dishCategorySnapshot: dish.category,
           quantity: item.quantity,
-          baseUnitPrice: BigInt(baseUnitPrice),
-          customizationUnitPrice: BigInt(customizationUnitPrice),
+          basePriceSnapshot: BigInt(baseUnitPrice),
+          customizationPrice: BigInt(customizationUnitPrice),
           finalUnitPrice: BigInt(finalUnitPrice),
           lineTotal: BigInt(lineTotal),
-          specialNotes: item.notes,
+          notes: item.notes,
           tasteCustomizations: { create: tasteCustomizationsToCreate },
           ingredientCustomizations: { create: ingredientCustomizationsToCreate },
           substitutions: { create: substitutionsToCreate },
@@ -238,7 +227,7 @@ orderRoutes.post('/', validate(createOrderSchema), async (req, res, next) => {
       const order = await tx.order.create({
         data: {
           orderNumber,
-          idempotencyKey,
+          idempotencyKey: idempotencyKey ?? `IDEMP-${orderNumber}`,
           idempotencyRequestHash: payloadHash,
           status: 'PENDING',
           paymentStatus: 'UNPAID',
@@ -252,8 +241,13 @@ orderRoutes.post('/', validate(createOrderSchema), async (req, res, next) => {
           total: BigInt(total),
           customerName: customer.name,
           customerEmail: customer.email,
-          customerPhone: customer.phone,
-          customerPhoneLookupHmac: phoneLookupHmac,
+          customerPhoneHash: phoneLookupHmac,
+          customerDialCode: customer.dialCode ?? '+84',
+          customerCountryCode: customer.countryCode ?? null,
+          preferredContactChannel: customer.preferredContactChannel ?? 'PHONE_CALL',
+          isWhatsAppAvailable: Boolean(customer.isWhatsAppAvailable),
+          hotelOrBuildingName: customer.hotelOrBuildingName ?? null,
+          roomOrFloorNumber: customer.roomOrFloorNumber ?? null,
           deliveryAddress: customer.deliveryAddress,
           customerNotes,
           items: {
@@ -261,9 +255,9 @@ orderRoutes.post('/', validate(createOrderSchema), async (req, res, next) => {
           },
           statusHistory: {
             create: {
-              fromStatus: null,
+              fromStatus: 'PENDING',
               toStatus: 'PENDING',
-              actorType: 'CUSTOMER',
+              actor: 'CUSTOMER',
               reason: 'Order placed by customer',
             },
           },
@@ -308,7 +302,7 @@ orderRoutes.post('/lookup', validate(orderLookupSchema), async (req, res, next) 
     const order = await prisma.order.findFirst({
       where: {
         orderNumber,
-        customerPhoneLookupHmac: phoneLookupHmac,
+        customerPhoneHash: phoneLookupHmac,
       },
       include: {
         items: {
@@ -329,26 +323,26 @@ orderRoutes.post('/lookup', validate(orderLookupSchema), async (req, res, next) 
       return;
     }
 
-    const items = order.items.map((i) => ({
+    const items = order.items.map((i: any) => ({
       dishName: i.dishNameSnapshot,
       quantity: i.quantity,
       finalUnitPrice: Number(i.finalUnitPrice),
       lineTotal: Number(i.lineTotal),
-      tasteSelections: i.tasteCustomizations.map((tc) => ({
+      tasteSelections: i.tasteCustomizations.map((tc: any) => ({
         name: tc.attributeNameSnapshot,
-        value: tc.chosenValue,
+        value: tc.selectedValue,
         label: tc.customerLabelSnapshot,
       })),
-      ingredientChanges: i.ingredientCustomizations.map((ic) => ({
+      ingredientChanges: i.ingredientCustomizations.map((ic: any) => ({
         name: ic.ingredientNameSnapshot,
         action: ic.action,
         selectedQuantity: Number(ic.selectedQuantity),
-        unit: ic.unitSnapshot,
+        unit: ic.unit,
       })),
-      substitutions: i.substitutions.map((sub) => ({
-        originalIngredient: sub.originalIngredientSnapshot,
-        substituteIngredient: sub.substituteIngredientSnapshot,
-        reason: sub.reasonSnapshot,
+      substitutions: i.substitutions.map((sub: any) => ({
+        originalIngredient: sub.originalIngredientNameSnapshot,
+        substituteIngredient: sub.substituteIngredientNameSnapshot,
+        reason: sub.kitchenInstructionSnapshot,
       })),
     }));
 

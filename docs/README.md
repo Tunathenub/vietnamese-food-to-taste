@@ -19,3 +19,9 @@ This directory keeps product rules, architecture decisions, seed-data sources, a
 - [Sitemap](product/sitemap.md)
 - [Roadmap](roadmap.md)
 - [Source document assessment](reviews/source-documents-assessment.md)
+
+## Key Product Decisions (International Tourist Delivery)
+
+- **Smart Country & Dial Code Inference**: Selecting a country or taste profile links a standard country calling code (`dial_code`), automatically pre-filling the phone input at Checkout.
+- **Cross-Border Messaging Channels**: Orders support WhatsApp and Zalo flags; the kitchen/staff portal provides one-click `wa.me/<phone>` links to message tourists without roaming costs or saving numbers.
+- **Prepaid Hotel Drop-off**: For tourists using data-only eSIMs, prepaid orders allow safe drop-off at hotel reception/lobby desks with structured room notes if voice contact fails.
