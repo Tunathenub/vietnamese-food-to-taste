@@ -153,9 +153,33 @@ export function DishDetailPage() {
   const { activeProfile, personalPreferences } = useTasteStore();
   const addItem = useCartStore((state) => state.addItem);
 
-  const [dish, setDish] = useState<DishDetailData | null>(null);
-  const [tasteValues, setTasteValues] = useState<Record<string, number>>({});
-  const [ingredientQuantities, setIngredientQuantities] = useState<Record<string, number>>({});
+  const [dish, setDish] = useState<DishDetailData | null>(() => {
+    return dishSlug ? (FALLBACK_DETAILS[dishSlug] ?? null) : null;
+  });
+  const [tasteValues, setTasteValues] = useState<Record<string, number>>(() => {
+    const fallback = dishSlug ? FALLBACK_DETAILS[dishSlug] : null;
+    if (!fallback?.tasteConfigurations) return {};
+    const init: Record<string, number> = {};
+    for (const config of fallback.tasteConfigurations) {
+      let val = config.baseValue;
+      if (personalPreferences[config.code] !== undefined) {
+        val = personalPreferences[config.code];
+      } else if (activeProfile?.defaults?.[config.code] !== undefined) {
+        val = activeProfile.defaults[config.code];
+      }
+      init[config.code] = Math.max(config.minValue ?? 0, Math.min(config.maxValue ?? 5, val));
+    }
+    return init;
+  });
+  const [ingredientQuantities, setIngredientQuantities] = useState<Record<string, number>>(() => {
+    const fallback = dishSlug ? FALLBACK_DETAILS[dishSlug] : null;
+    if (!fallback?.ingredients) return {};
+    const init: Record<string, number> = {};
+    for (const ing of fallback.ingredients) {
+      init[ing.ingredientId] = ing.defaultQuantity;
+    }
+    return init;
+  });
   const [selectedSubstitutions, setSelectedSubstitutions] = useState<string[]>([]);
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');

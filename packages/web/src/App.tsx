@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Routes, Route } from 'react-router';
+import { Routes, Route, Navigate, useLocation } from 'react-router';
 import { HomePage } from './pages/HomePage';
 import { MenuPage } from './pages/MenuPage';
 import { DishDetailPage } from './pages/DishDetailPage';
@@ -14,10 +14,40 @@ import { StaffOrderDetailPage } from './pages/StaffOrderDetailPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AuthPage } from './pages/AuthPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 
 import { Navbar } from './components/Navbar';
 import { OnboardingModal } from './components/OnboardingModal';
 import { useAuthStore } from './stores/auth-store';
+
+function StaffRouteGuard({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((state) => state.user);
+  const location = useLocation();
+
+  if (!user) {
+    const notice = 'Vui lòng đăng nhập với tài khoản Quản trị hoặc Nhân viên Bếp để truy cập khu vực này.';
+    return (
+      <Navigate
+        to={`/auth?redirect=${encodeURIComponent(location.pathname)}&notice=${encodeURIComponent(notice)}`}
+        replace
+        state={{ notice, redirect: location.pathname }}
+      />
+    );
+  }
+
+  if (user.role !== 'STAFF' && user.role !== 'ADMIN') {
+    const notice = 'Tài khoản của bạn không có quyền truy cập khu vực Bếp & Quản trị (yêu cầu vai trò STAFF hoặc ADMIN).';
+    return (
+      <Navigate
+        to={`/auth?notice=${encodeURIComponent(notice)}`}
+        replace
+        state={{ notice }}
+      />
+    );
+  }
+
+  return <>{children}</>;
+}
 
 export default function App() {
   const checkAuth = useAuthStore((state) => state.checkAuth);
@@ -41,11 +71,27 @@ export default function App() {
           <Route path="/orders/success" element={<OrderSuccessPage />} />
           <Route path="/orders/lookup" element={<OrderLookupPage />} />
           <Route path="/orders/:orderNumber" element={<OrderDetailPage />} />
-          <Route path="/staff/orders" element={<StaffOrdersPage />} />
-          <Route path="/staff/orders/:orderNumber" element={<StaffOrderDetailPage />} />
+          <Route
+            path="/staff/orders"
+            element={
+              <StaffRouteGuard>
+                <StaffOrdersPage />
+              </StaffRouteGuard>
+            }
+          />
+          <Route
+            path="/staff/orders/:orderNumber"
+            element={
+              <StaffRouteGuard>
+                <StaffOrderDetailPage />
+              </StaffRouteGuard>
+            }
+          />
+          <Route path="/dishes/:dishSlug" element={<DishDetailPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>
     </div>

@@ -6,7 +6,7 @@ import type { ApiResponse } from '@vft/shared';
  * - Production: Can be configured with VITE_API_URL (e.g. 'https://api.yourdomain.com' or 'https://api.yourdomain.com/api')
  *   If left empty, defaults to '/api' (ideal for reverse proxies / same-domain routing).
  */
-const rawUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '';
+const rawUrl = ((import.meta as any).env?.VITE_API_URL as string | undefined)?.trim() || '';
 const cleanUrl = rawUrl.replace(/\/+$/, '');
 
 export const API_BASE = cleanUrl

@@ -9,12 +9,14 @@ export function Navbar() {
   const activeProfile = useTasteStore((state) => state.activeProfile);
   const { user, logout } = useAuthStore();
 
+  const isStaffOrAdmin = Boolean(user && (user.role === 'STAFF' || user.role === 'ADMIN'));
+
   const navLinks = [
     { to: '/', label: 'Trang chủ' },
     { to: '/taste-profiles', label: 'Gu khẩu vị' },
     { to: '/menu', label: 'Thực đơn' },
     { to: '/orders/lookup', label: 'Tra cứu đơn' },
-    { to: '/staff/orders', label: '👨‍🍳 Bếp & Quản trị' },
+    ...(isStaffOrAdmin ? [{ to: '/staff/orders', label: '👨‍🍳 Bếp & Quản trị' }] : []),
   ];
 
   return (
@@ -56,9 +58,9 @@ export function Navbar() {
               >
                 <span>👋</span>
                 <span className="max-w-[120px] truncate">{user.name}</span>
-                {user.role === 'STAFF' && (
+                {(user.role === 'STAFF' || user.role === 'ADMIN') && (
                   <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md border border-amber-300">
-                    Bếp
+                    {user.role === 'ADMIN' ? 'Quản trị' : 'Bếp'}
                   </span>
                 )}
               </Link>
