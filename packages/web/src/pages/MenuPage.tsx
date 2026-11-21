@@ -59,7 +59,7 @@ export function MenuPage() {
   const [quickToast, setQuickToast] = useState<string | null>(null);
 
   const [dishes, setDishes] = useState<DishItem[]>(FALLBACK_DISHES);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('ALL');
   const [vegetarianOnly, setVegetarianOnly] = useState(false);
@@ -85,12 +85,14 @@ export function MenuPage() {
 
   useEffect(() => {
     async function loadDishes() {
-      setLoading(true);
-      const res = await api.get<{ items: DishItem[] }>('/dishes');
-      if (res.data?.items && res.data.items.length > 0) {
-        setDishes(res.data.items);
+      try {
+        const res = await api.get<{ items: DishItem[] }>('/dishes');
+        if (res.data?.items && res.data.items.length > 0) {
+          setDishes(res.data.items);
+        }
+      } catch {
+        // Resilient fallback: keep FALLBACK_DISHES
       }
-      setLoading(false);
     }
     loadDishes();
   }, []);
@@ -235,7 +237,7 @@ export function MenuPage() {
 
         {/* Dish Grid */}
         <div className="flex-grow">
-          {loading ? (
+          {loading && dishes.length === 0 ? (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="bg-white rounded-3xl h-80 border border-gray-100" />
