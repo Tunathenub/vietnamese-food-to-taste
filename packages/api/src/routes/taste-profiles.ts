@@ -4,8 +4,79 @@ import type { ApiResponse, TasteProfileDetail } from '@vft/shared';
 
 export const tasteProfileRoutes: Router = Router();
 
+const FALLBACK_TASTE_PROFILES: TasteProfileDetail[] = [
+  {
+    id: 'tp-authentic-vn',
+    code: 'AUTHENTIC_VN',
+    name: 'Vị chuẩn Việt Nam',
+    type: 'COUNTRY' as any,
+    countryCode: 'VN',
+    dialCode: '+84',
+    description: 'Hương vị truyền thống cân bằng, đậm đà nước mắm và rau thơm tươi.',
+    attributes: {
+      spice_level: 2,
+      sweetness: 2,
+      sourness: 2,
+      fish_sauce_intensity: 3,
+      herb_intensity: 4,
+      oil_richness: 2,
+    },
+  },
+  {
+    id: 'tp-kr-inspired',
+    code: 'KR_INSPIRED',
+    name: 'Khẩu vị Hàn Quốc (Korean-inspired)',
+    type: 'COUNTRY' as any,
+    countryCode: 'KR',
+    dialCode: '+82',
+    description: 'Tăng vị cay đậm đà, vị đậm đà vừa phải, giảm bớt mùi mắm nồng.',
+    attributes: {
+      spice_level: 4,
+      sweetness: 2,
+      sourness: 3,
+      fish_sauce_intensity: 2,
+      herb_intensity: 3,
+      oil_richness: 3,
+    },
+  },
+  {
+    id: 'tp-western-mild',
+    code: 'WESTERN_MILD',
+    name: 'Khẩu vị phương Tây dịu nhẹ (Western Mild)',
+    type: 'COUNTRY' as any,
+    countryCode: 'US',
+    dialCode: '+1',
+    description: 'Ít cay, dịu mùi nước mắm, rau thơm chọn lọc, vị thanh nhẹ.',
+    attributes: {
+      spice_level: 1,
+      sweetness: 3,
+      sourness: 2,
+      fish_sauce_intensity: 1,
+      herb_intensity: 2,
+      oil_richness: 2,
+    },
+  },
+  {
+    id: 'tp-jp-delicate',
+    code: 'JP_DELICATE',
+    name: 'Khẩu vị Nhật Bản thanh tao (Japanese Delicate)',
+    type: 'COUNTRY' as any,
+    countryCode: 'JP',
+    dialCode: '+81',
+    description: 'Tối thiểu cay, hạn chế dầu mỡ, vị thanh nhẹ, nổi bật vị tự nhiên.',
+    attributes: {
+      spice_level: 0,
+      sweetness: 2,
+      sourness: 1,
+      fish_sauce_intensity: 1,
+      herb_intensity: 2,
+      oil_richness: 1,
+    },
+  },
+];
+
 // GET /api/taste-profiles
-tasteProfileRoutes.get('/', async (_req, res, next) => {
+tasteProfileRoutes.get('/', async (_req, res) => {
   try {
     const profiles = await prisma.tasteProfile.findMany({
       where: { isActive: true },
@@ -38,19 +109,23 @@ tasteProfileRoutes.get('/', async (_req, res, next) => {
     });
 
     const body: ApiResponse<{ items: TasteProfileDetail[] }> = {
-      data: { items },
+      data: { items: items.length > 0 ? items : FALLBACK_TASTE_PROFILES },
       error: null,
     };
     res.json(body);
-  } catch (err) {
-    next(err);
+  } catch {
+    // Prisma offline, return mock fallback profiles
+    res.json({
+      data: { items: FALLBACK_TASTE_PROFILES },
+      error: null,
+    });
   }
 });
 
 // GET /api/taste-profiles/:code
-tasteProfileRoutes.get('/:code', async (req, res, next) => {
+tasteProfileRoutes.get('/:code', async (req, res) => {
+  const { code } = req.params;
   try {
-    const { code } = req.params;
     const profile = await prisma.tasteProfile.findUnique({
       where: { code },
       include: {
@@ -63,11 +138,15 @@ tasteProfileRoutes.get('/:code', async (req, res, next) => {
     });
 
     if (!profile || !profile.isActive) {
-      const body: ApiResponse<null> = {
+      const fallback = FALLBACK_TASTE_PROFILES.find((p) => p.code === code);
+      if (fallback) {
+        res.json({ data: fallback, error: null });
+        return;
+      }
+      res.status(404).json({
         data: null,
         error: { code: 'TASTE_PROFILE_NOT_FOUND', message: 'Taste profile not found.' },
-      };
-      res.status(404).json(body);
+      });
       return;
     }
 
@@ -87,12 +166,19 @@ tasteProfileRoutes.get('/:code', async (req, res, next) => {
       attributes,
     };
 
-    const body: ApiResponse<TasteProfileDetail> = {
+    res.json({
       data: item,
       error: null,
-    };
-    res.json(body);
-  } catch (err) {
-    next(err);
+    });
+  } catch {
+    const fallback = FALLBACK_TASTE_PROFILES.find((p) => p.code === code);
+    if (fallback) {
+      res.json({ data: fallback, error: null });
+      return;
+    }
+    res.status(404).json({
+      data: null,
+      error: { code: 'TASTE_PROFILE_NOT_FOUND', message: 'Taste profile not found.' },
+    });
   }
 });

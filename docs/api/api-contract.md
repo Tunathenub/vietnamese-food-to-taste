@@ -706,3 +706,145 @@ Recommended MVP limits:
 - Avoid exposing kitchen-only instructions through public endpoints.
 - Do not log full phone numbers, delivery addresses, customer notes, or idempotency payloads.
 - Apply request-size limits and reject unknown properties on checkout and staff mutation requests.
+
+---
+
+## 13. Real-Time Server-Sent Events (SSE)
+
+### 13.1 Staff KDS Event Stream
+
+```text
+GET /api/events/orders
+```
+
+Streams all live order lifecycle events to kitchen staff.
+
+Headers returned:
+- `Content-Type: text/event-stream`
+- `Cache-Control: no-cache`
+- `Connection: keep-alive`
+- `X-Accel-Buffering: no`
+
+Events Emitted:
+- `order:created`: Triggered upon guest order creation.
+- `order:status_updated`: Triggered when staff transitions an order status.
+
+### 13.2 Customer Targeted Order Tracking Stream
+
+```text
+GET /api/events/orders/:orderNumber
+```
+
+Streams real-time status transitions for a specific order to the customer.
+
+---
+
+## 14. Taste Analytics Endpoints
+
+### 14.1 Analytics Overview
+
+```text
+GET /api/analytics/overview
+```
+
+Returns aggregate metrics: total orders, total revenue, average order value, customization rate, and tourist nationality distribution.
+
+### 14.2 6-Axis Taste Radar Vectors
+
+```text
+GET /api/analytics/taste-radar?country={countryCode}
+```
+
+Returns 6-axis taste vectors comparing the authentic Vietnamese culinary baseline with tourist customizations for the selected nationality.
+
+### 14.3 Ingredient Omission & Augmentation
+
+```text
+GET /api/analytics/ingredients
+```
+
+Returns ranking of top omitted herbs (e.g., ngò gai / culantro, hành hoa) and augmented ingredients.
+
+### 14.4 Analytics CSV Export
+
+```text
+GET /api/analytics/export
+```
+
+Downloads a multi-section CSV report containing executive KPIs, demographic breakdowns, and ingredient omission frequencies.
+
+---
+
+## 15. Gemini AI Endpoints
+
+### 15.1 AI Taste Concierge
+
+```text
+POST /api/ai/concierge
+```
+
+Parses natural language cravings into structured dish recommendations and taste customizations.
+
+Payload:
+```json
+{
+  "prompt": "I want something spicy like Sichuan food, but no cilantro and keto friendly",
+  "language": "en"
+}
+```
+
+Response:
+```json
+{
+  "data": {
+    "reply": "Based on your preference for bold Sichuan-level heat...",
+    "recommendedDish": {
+      "dishSlug": "pho-bo",
+      "dishName": "Phở Bò Hà Nội",
+      "basePrice": 65000,
+      "reason": "Rich slow-simmered beef broth paired with high spice level"
+    },
+    "customization": {
+      "tasteValues": { "spice_level": 5, "herb_intensity": 0 },
+      "ingredientQuantities": { "ing-culantro": 0 },
+      "specialNotes": "No cilantro, extra fresh chili on side"
+    },
+    "quickAction": {
+      "label": "Thêm vào giỏ hàng",
+      "action": "ADD_TO_CART"
+    }
+  }
+}
+```
+
+### 15.2 AI Cultural Dish Storyteller
+
+```text
+POST /api/ai/dish-story
+```
+
+Fetches cultural background, historical context, dining etiquette steps, and insider secrets for a given dish. Cached in-memory by `${dishSlug}:${language}`.
+
+Payload:
+```json
+{
+  "dishSlug": "bun-cha",
+  "language": "vi"
+}
+```
+
+### 15.3 AI Kitchen Operating Briefing
+
+```text
+POST /api/ai/kitchen-briefing
+```
+
+Analyzes current live orders to produce chef operational summaries, palate trends, line-cook directives, and seasoning prep advice.
+
+Payload:
+```json
+{
+  "timeframe": "today"
+}
+```
+

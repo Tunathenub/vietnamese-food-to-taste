@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router';
 import { api } from '../lib/api-client';
+import { useOrderEvents } from '../lib/use-order-events';
 
 interface KitchenTasteItem {
   attribute: string;
@@ -197,14 +198,72 @@ export function StaffOrderDetailPage() {
   const [updating, setUpdating] = useState(false);
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [justUpdated, setJustUpdated] = useState(false);
 
   const fetchOrderDetail = useCallback(async () => {
     if (!orderNumber) return;
     setLoading(true);
     try {
-      const res = await api.get<{ order: StaffOrderDetail }>(`/staff/orders/${orderNumber}`);
-      if (res.data?.order) {
-        setOrder(res.data.order);
+      const res = await api.get<any>(`/staff/orders/${orderNumber}`);
+      const raw = res.data?.order ?? res.data;
+      if (raw && (raw.orderNumber || raw.customerName)) {
+        const normalized: StaffOrderDetail = {
+          orderNumber: raw.orderNumber || orderNumber,
+          status: raw.status || 'PENDING',
+          paymentStatus: raw.paymentStatus || 'UNPAID',
+          fulfillmentType: raw.fulfillmentType || 'DELIVERY',
+          subtotal: Number(raw.subtotal) || 0,
+          deliveryFee: Number(raw.deliveryFee) || 0,
+          total: Number(raw.total) || 0,
+          currency: raw.currency || 'VND',
+          customerName: raw.customerName || 'Khách hàng',
+          customerPhone: raw.customerPhone,
+          customerDialCode: raw.customerDialCode,
+          customerCountryCode: raw.customerCountryCode,
+          preferredContactChannel: raw.preferredContactChannel,
+          isWhatsAppAvailable: Boolean(raw.isWhatsAppAvailable),
+          hotelOrBuildingName: raw.hotelOrBuildingName,
+          roomOrFloorNumber: raw.roomOrFloorNumber,
+          whatsAppDirectUrl: raw.whatsAppDirectUrl,
+          customerEmail: raw.customerEmail,
+          deliveryAddress: raw.deliveryAddress,
+          customerNotes: raw.customerNotes,
+          cancellationReason: raw.cancellationReason,
+          items: (raw.items || []).map((i: any) => ({
+            dish: i.dish || i.dishName || 'Món ăn',
+            quantity: Number(i.quantity) || 1,
+            finalUnitPrice: Number(i.finalUnitPrice) || 0,
+            lineTotal: Number(i.lineTotal) || 0,
+            specialNotes: i.specialNotes || i.notes,
+            tasteCustomizations: (i.tasteCustomizations || []).map((tc: any) => ({
+              attribute: tc.attribute || tc.name || '',
+              chosenValue: Number(tc.chosenValue ?? tc.value ?? 0),
+              customerLabel: tc.customerLabel || tc.label || `Mức ${tc.chosenValue ?? tc.value ?? 0}`,
+              kitchenInstruction: tc.kitchenInstruction || `Điều chỉnh ${tc.attribute || tc.name}: ${tc.customerLabel || tc.chosenValue}`,
+            })),
+            ingredientCustomizations: (i.ingredientCustomizations || []).map((ic: any) => ({
+              ingredient: ic.ingredient || ic.name || '',
+              action: ic.action || 'CUSTOM',
+              selectedQuantity: Number(ic.selectedQuantity ?? 0),
+              unit: ic.unit || 'phần',
+              kitchenInstruction: ic.kitchenInstruction || `${ic.ingredient || ic.name}: ${ic.selectedQuantity}`,
+            })),
+            substitutions: (i.substitutions || []).map((sub: any) => ({
+              original: sub.original || sub.originalIngredient || '',
+              substitute: sub.substitute || sub.substituteIngredient || '',
+              kitchenInstruction: sub.kitchenInstruction || sub.reason || `Thay bằng ${sub.substitute}`,
+            })),
+          })),
+          statusHistory: (raw.statusHistory || []).map((h: any) => ({
+            fromStatus: h.fromStatus ?? null,
+            toStatus: h.toStatus || 'PENDING',
+            actor: h.actor || 'STAFF',
+            actorType: h.actorType || h.actor || 'STAFF',
+            reason: h.reason ?? null,
+            createdAt: h.createdAt || new Date().toISOString(),
+          })),
+        };
+        setOrder(normalized);
       } else {
         setOrder({
           ...FALLBACK_DETAIL,
@@ -225,6 +284,45 @@ export function StaffOrderDetailPage() {
   useEffect(() => {
     fetchOrderDetail();
   }, [fetchOrderDetail]);
+
+  // Connect to SSE for real-time status updates on /api/events/orders/:orderNumber
+  const { isConnected } = useOrderEvents({
+    orderNumber,
+    enabled: !!orderNumber,
+    onStatusUpdated: (payload) => {
+      if (!payload || !payload.status) return;
+
+      setOrder((prev) => {
+        if (prev.status === payload.status) return prev;
+
+        return {
+          ...prev,
+          status: payload.status as StaffOrderDetail['status'],
+          cancellationReason:
+            payload.status === 'CANCELLED'
+              ? (payload.reason || prev.cancellationReason || 'Đã hủy đơn')
+              : prev.cancellationReason,
+          statusHistory: [
+            {
+              fromStatus: prev.status,
+              toStatus: payload.status,
+              actor: payload.actor || 'STAFF',
+              actorType: payload.actorType || 'STAFF',
+              reason: payload.reason || `Cập nhật trạng thái thành ${payload.status}`,
+              createdAt: payload.timestamp || payload.updatedAt || new Date().toISOString(),
+            },
+            ...prev.statusHistory,
+          ],
+        };
+      });
+
+      setJustUpdated(true);
+      setTimeout(() => setJustUpdated(false), 3000);
+    },
+    onFallbackPoll: () => {
+      fetchOrderDetail();
+    },
+  });
 
   const handleUpdateStatus = async (targetStatus: StaffOrderDetail['status'], reason?: string) => {
     if (!orderNumber) return;
@@ -269,21 +367,25 @@ export function StaffOrderDetailPage() {
   };
 
   const getStatusBadge = (status: StaffOrderDetail['status']) => {
+    const badgeClasses = `px-3 py-1 text-xs font-bold rounded-full transition-all duration-500 transform ${
+      justUpdated ? 'ring-4 ring-orange-500/50 scale-105' : ''
+    }`;
+
     switch (status) {
       case 'PENDING':
-        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-amber-900/60 text-amber-300 border border-amber-600">⏳ Chờ duyệt</span>;
+        return <span className={`${badgeClasses} bg-amber-900/60 text-amber-300 border border-amber-600`}>⏳ Chờ duyệt</span>;
       case 'CONFIRMED':
-        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-blue-900/60 text-blue-300 border border-blue-600">✅ Đã nhận đơn</span>;
+        return <span className={`${badgeClasses} bg-blue-900/60 text-blue-300 border border-blue-600`}>✅ Đã nhận đơn</span>;
       case 'PREPARING':
-        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-orange-900/60 text-orange-300 border border-orange-600 animate-pulse">🍳 Đang nấu</span>;
+        return <span className={`${badgeClasses} bg-orange-900/60 text-orange-300 border border-orange-600 animate-pulse`}>🍳 Đang nấu</span>;
       case 'READY':
-        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-purple-900/60 text-purple-300 border border-purple-600">📦 Đã xong món</span>;
+        return <span className={`${badgeClasses} bg-purple-900/60 text-purple-300 border border-purple-600`}>📦 Đã xong món</span>;
       case 'COMPLETED':
-        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-emerald-900/60 text-emerald-300 border border-emerald-600">🎉 Đã hoàn tất</span>;
+        return <span className={`${badgeClasses} bg-emerald-900/60 text-emerald-300 border border-emerald-600`}>🎉 Đã hoàn tất</span>;
       case 'CANCELLED':
-        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-red-900/60 text-red-300 border border-red-600">❌ Đã hủy đơn</span>;
+        return <span className={`${badgeClasses} bg-red-900/60 text-red-300 border border-red-600`}>❌ Đã hủy đơn</span>;
       default:
-        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-slate-800 text-slate-300">{status}</span>;
+        return <span className={`${badgeClasses} bg-slate-800 text-slate-300`}>{status}</span>;
     }
   };
 
@@ -302,11 +404,25 @@ export function StaffOrderDetailPage() {
               ← Danh sách đơn
             </Link>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-xl sm:text-2xl font-black text-white">
                   Đơn hàng: <span className="text-orange-400 font-mono">{order.orderNumber}</span>
                 </h1>
                 {getStatusBadge(order.status)}
+
+                {/* Real-time SSE Live indicator */}
+                {isConnected && (
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-lg border border-emerald-800">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Trực tiếp
+                  </span>
+                )}
+
+                {justUpdated && (
+                  <span className="text-xs font-bold text-orange-400 animate-pulse">
+                    ✨ Vừa cập nhật!
+                  </span>
+                )}
               </div>
             </div>
           </div>

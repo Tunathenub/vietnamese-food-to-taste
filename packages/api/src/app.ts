@@ -9,6 +9,9 @@ import { tasteProfileRoutes } from './routes/taste-profiles.js';
 import { dishRoutes } from './routes/dishes.js';
 import { orderRoutes } from './routes/orders.js';
 import { staffRoutes } from './routes/staff.js';
+import { eventsRoutes } from './routes/events.js';
+import { analyticsRoutes } from './routes/analytics.js';
+import { aiRoutes } from './routes/ai.js';
 import { authRouter, JWT_SECRET, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from './routes/auth.js';
 
 const app: Express = express();
@@ -125,6 +128,9 @@ app.use('/api/taste-profiles', tasteProfileRoutes);
 app.use('/api/dishes', dishRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/staff', staffRoutes);
+app.use('/api/events', eventsRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/ai', aiRoutes);
 
 // ── Error Handler ──
 app.use(errorHandler);

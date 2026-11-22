@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams, Link } from 'react-router';
 import { useAuthStore } from '../stores/auth-store';
+import { useTranslation } from '../i18n';
 import { api } from '../lib/api-client';
 
 export function OrderSuccessPage() {
@@ -8,6 +9,7 @@ export function OrderSuccessPage() {
   const orderNumber = searchParams.get('orderNumber') ?? 'VFT-SAMPLE-001';
   const phone = searchParams.get('phone') ?? '';
   const user = useAuthStore((state) => state.user);
+  const { t } = useTranslation();
 
   const [password, setPassword] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -17,28 +19,21 @@ export function OrderSuccessPage() {
   const handleQuickRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password.length < 6) {
-      setErrorMsg('Mật khẩu tối thiểu 6 ký tự.');
+      setErrorMsg('Mật khẩu tối thiểu 6 ký tự / Minimum 6 characters.');
       return;
     }
     setSaving(true);
     setErrorMsg(null);
 
     try {
-      // Create guest account with phone and chosen password
-      const res = await api.post('/auth/register', {
+      await api.post('/auth/register', {
         name: `Guest (${phone.slice(-4)})`,
         email: `guest-${phone.replace(/[^0-9]/g, '')}@vietnamesefood.local`,
         password,
         phone,
-        nationality: 'Du khách',
+        nationality: 'Tourist',
       });
-
-      if (res.error) {
-        // If account already exists or mock
-        setSavedSuccess(true);
-      } else {
-        setSavedSuccess(true);
-      }
+      setSavedSuccess(true);
     } catch {
       setSavedSuccess(true);
     } finally {
@@ -54,23 +49,34 @@ export function OrderSuccessPage() {
             🎉
           </div>
 
-          <h1 className="text-2xl font-black text-gray-900">Đặt hàng thành công!</h1>
+          <h1 className="text-2xl font-black text-gray-900">{t.orderSuccess.title}</h1>
           <p className="mt-2 text-xs text-gray-600 leading-relaxed">
-            Nhà hàng đã nhận được đơn hàng và đang chuẩn bị những nguyên liệu tươi ngon nhất theo đúng khẩu vị bạn yêu cầu.
+            {t.orderSuccess.subtitle}
           </p>
 
           <div className="my-6 rounded-2xl bg-orange-50/70 border border-orange-200 p-4">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-orange-800">Mã đơn hàng của bạn</div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-orange-800">
+              {t.orderSuccess.orderNumber}
+            </div>
             <div className="text-xl font-extrabold text-orange-600 mt-1 tracking-tight select-all font-mono">
               {orderNumber}
             </div>
             {phone && (
               <div className="text-xs text-gray-600 mt-1">
-                Số điện thoại người nhận: <strong>{phone}</strong>
+                {t.checkout.phone}: <strong>{phone}</strong>
               </div>
             )}
             <div className="text-[11px] text-gray-500 mt-1">
-              (Lưu lại mã này để kiểm tra tiến trình giao món)
+              ({t.orderLookup.guestNotice})
+            </div>
+          </div>
+
+          {/* Tourist Hotel Drop-off Notice */}
+          <div className="mb-6 rounded-2xl bg-blue-50 border border-blue-200 p-3.5 text-left text-xs text-blue-900 flex items-start gap-2.5">
+            <span className="text-base">🛎️</span>
+            <div>
+              <span className="font-bold block">{t.orderSuccess.touristTipTitle}</span>
+              <span className="text-[11px] text-blue-800">{t.orderSuccess.touristTipContent}</span>
             </div>
           </div>
 
@@ -79,14 +85,14 @@ export function OrderSuccessPage() {
               to={`/orders/${orderNumber}${phone ? `?phone=${encodeURIComponent(phone)}` : ''}`}
               className="block w-full rounded-xl bg-orange-600 py-3 text-xs font-bold text-white shadow-sm hover:bg-orange-700 transition"
             >
-              Xem tiến độ đơn hàng →
+              {t.orderSuccess.viewOrderDetails} →
             </Link>
 
             <Link
               to="/"
               className="block w-full rounded-xl border border-gray-200 bg-white py-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition"
             >
-              Về Trang chủ
+              {t.orderSuccess.backHome}
             </Link>
           </div>
 
@@ -97,16 +103,18 @@ export function OrderSuccessPage() {
                 <div className="flex items-start gap-2.5">
                   <span className="text-xl">🌟</span>
                   <div>
-                    <h3 className="text-xs font-bold text-gray-900">Lưu lại khẩu vị cho các bữa ăn tiếp theo?</h3>
+                    <h3 className="text-xs font-bold text-gray-900">
+                      Save taste profile for your next meals in Vietnam?
+                    </h3>
                     <p className="text-[11px] text-gray-500 leading-relaxed mt-0.5">
-                      Chỉ cần đặt 1 mật khẩu nhanh để lưu hồ sơ khẩu vị và địa chỉ khách sạn cho các lần đặt sau trong chuyến đi!
+                      Create a quick password to save your hotel address and taste customizations for future orders!
                     </p>
                   </div>
                 </div>
 
                 {savedSuccess ? (
                   <div className="text-xs text-emerald-800 font-semibold bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 flex items-center gap-2">
-                    <span>✅</span> Đã lưu tài khoản thành công! Khẩu vị của bạn đã được ghi nhớ.
+                    <span>✅</span> Saved successfully! Your taste profile is now remembered.
                   </div>
                 ) : (
                   <form onSubmit={handleQuickRegister} className="space-y-2">
@@ -114,7 +122,7 @@ export function OrderSuccessPage() {
                     <div className="flex gap-2">
                       <input
                         type="password"
-                        placeholder="Tạo mật khẩu (tối thiểu 6 ký tự)..."
+                        placeholder="Create password (min 6 chars)..."
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="flex-1 rounded-xl border border-gray-200 bg-white p-2 text-xs focus:border-orange-500 focus:outline-hidden"
@@ -122,9 +130,9 @@ export function OrderSuccessPage() {
                       <button
                         type="submit"
                         disabled={saving}
-                        className="rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 text-xs font-bold transition whitespace-nowrap shadow-xs disabled:opacity-50"
+                        className="rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 text-xs font-bold transition whitespace-nowrap shadow-2xs disabled:opacity-50"
                       >
-                        {saving ? 'Đang lưu...' : 'Lưu tài khoản'}
+                        {saving ? t.common.loading : t.common.save}
                       </button>
                     </div>
                   </form>

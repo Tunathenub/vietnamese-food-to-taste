@@ -4,6 +4,8 @@ import { validate } from '../middleware/validate.js';
 import { createOrderSchema, orderLookupSchema } from '@vft/shared/schemas';
 import { prisma } from '../lib/prisma.js';
 import type { ApiResponse, OrderSummary } from '@vft/shared';
+import { orderEvents } from '../services/order-events.js';
+import { demoOrderStore, type DemoOrderItem } from '../services/demo-orders.js';
 
 export const orderRoutes: Router = Router();
 
@@ -11,6 +13,135 @@ export const orderRoutes: Router = Router();
 function hashPhone(phone: string): string {
   const normalized = phone.replace(/\D/g, '');
   return crypto.createHmac('sha256', process.env.PHONE_SECRET ?? 'vft_secret').update(normalized).digest('hex');
+}
+
+function createDemoOrder(
+  customer: any,
+  fulfillmentType: string,
+  paymentMethod: string,
+  customerNotes: string,
+  items: any[]
+): OrderSummary {
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const randNum = Math.floor(1000 + Math.random() * 9000);
+  const orderNumber = `VFT-${dateStr}-${randNum}`;
+  const id = `demo-${randNum}`;
+
+  let orderSubtotal = 0;
+  let orderCustomizationTotal = 0;
+  const deliveryFee = fulfillmentType === 'DELIVERY' ? 15000 : 0;
+  const formattedItems: any[] = [];
+
+  for (const item of items) {
+    const dishIdStr = String(item.dishId || '').toLowerCase();
+    const dishName = dishIdStr.includes('bun-cha') ? 'Bún Chả Hà Nội' : (dishIdStr.includes('pho') ? 'Phở Bò Hà Nội' : 'Món Việt Đặc Biệt');
+    const baseUnitPrice = 65000;
+    const qty = Number(item.quantity) || 1;
+    const lineTotal = baseUnitPrice * qty;
+    orderSubtotal += lineTotal;
+
+    const tasteCustomizations = Object.entries(item.tasteValues || {}).map(([attribute, chosenValue]) => ({
+      attribute,
+      chosenValue: Number(chosenValue),
+      customerLabel: `Mức ${chosenValue}`,
+      kitchenInstruction: `Điều chỉnh ${attribute}: Mức ${chosenValue}`,
+    }));
+
+    const ingredientCustomizations = Object.entries(item.ingredientQuantities || {}).map(([ingredient, qty]) => ({
+      ingredient,
+      action: Number(qty) === 0 ? 'REMOVE' : 'CUSTOM',
+      selectedQuantity: Number(qty),
+      unit: 'phần',
+      kitchenInstruction: `${ingredient}: ${qty}`,
+    }));
+
+    formattedItems.push({
+      dishName,
+      quantity: qty,
+      finalUnitPrice: baseUnitPrice,
+      lineTotal,
+      specialNotes: item.notes || '',
+      notes: item.notes || '',
+      tasteCustomizations,
+      ingredientCustomizations,
+      substitutions: (item.substitutionIds || []).map((subId: string) => ({
+        original: 'Nguyên bản',
+        substitute: subId,
+        kitchenInstruction: `Thay thế: ${subId}`,
+      })),
+    });
+  }
+
+  const total = orderSubtotal + orderCustomizationTotal + deliveryFee;
+
+  const demoOrder: DemoOrderItem = {
+    id,
+    orderNumber,
+    status: 'PENDING',
+    paymentStatus: 'UNPAID',
+    paymentMethod,
+    fulfillmentType,
+    customerName: customer.name,
+    customerPhone: customer.phone,
+    customerDialCode: customer.dialCode ?? '+84',
+    customerCountryCode: customer.countryCode ?? null,
+    preferredContactChannel: customer.preferredContactChannel ?? 'PHONE_CALL',
+    isWhatsAppAvailable: Boolean(customer.isWhatsAppAvailable),
+    hotelOrBuildingName: customer.hotelOrBuildingName ?? null,
+    roomOrFloorNumber: customer.roomOrFloorNumber ?? null,
+    deliveryAddress: customer.deliveryAddress ?? null,
+    subtotal: orderSubtotal,
+    customizationTotal: orderCustomizationTotal,
+    deliveryFee,
+    discountTotal: 0,
+    total,
+    currency: 'VND',
+    itemCount: items.reduce((sum: number, i: any) => sum + (Number(i.quantity) || 1), 0),
+    items: formattedItems,
+    statusHistory: [
+      {
+        fromStatus: 'INITIAL',
+        toStatus: 'PENDING',
+        actor: 'CUSTOMER',
+        reason: 'Order placed by customer',
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    createdAt: new Date().toISOString(),
+  };
+
+  demoOrderStore.add(demoOrder);
+
+  const summary: OrderSummary = {
+    id: demoOrder.id,
+    orderNumber: demoOrder.orderNumber,
+    status: demoOrder.status,
+    paymentStatus: demoOrder.paymentStatus as any,
+    paymentMethod: demoOrder.paymentMethod as any,
+    fulfillmentType: demoOrder.fulfillmentType as any,
+    subtotal: demoOrder.subtotal,
+    customizationTotal: demoOrder.customizationTotal,
+    deliveryFee: demoOrder.deliveryFee,
+    discountTotal: demoOrder.discountTotal,
+    total: demoOrder.total,
+    currency: demoOrder.currency,
+    customerName: demoOrder.customerName,
+    customerDialCode: demoOrder.customerDialCode,
+    customerCountryCode: demoOrder.customerCountryCode,
+    preferredContactChannel: demoOrder.preferredContactChannel as any,
+    isWhatsAppAvailable: demoOrder.isWhatsAppAvailable,
+    hotelOrBuildingName: demoOrder.hotelOrBuildingName,
+    roomOrFloorNumber: demoOrder.roomOrFloorNumber,
+    deliveryAddress: demoOrder.deliveryAddress,
+    createdAt: demoOrder.createdAt,
+  };
+
+  orderEvents.emit('order:created', {
+    orderNumber: summary.orderNumber,
+    order: summary,
+  });
+
+  return summary;
 }
 
 // POST /api/orders
@@ -34,42 +165,48 @@ orderRoutes.post('/', validate(createOrderSchema), async (req, res, next) => {
 
     // Check idempotency
     if (idempotencyKey) {
-      const existing = await prisma.order.findUnique({
-        where: { idempotencyKey },
-      });
+      try {
+        const existing = await prisma.order.findUnique({
+          where: { idempotencyKey },
+        });
 
-      if (existing) {
-        if (existing.idempotencyRequestHash !== payloadHash) {
-          res.status(409).json({
-            data: null,
-            error: { code: 'IDEMPOTENCY_KEY_REUSED', message: 'Idempotency key reused with different request payload.' },
-          });
+        if (existing) {
+          if (existing.idempotencyRequestHash !== payloadHash) {
+            res.status(409).json({
+              data: null,
+              error: { code: 'IDEMPOTENCY_KEY_REUSED', message: 'Idempotency key reused with different request payload.' },
+            });
+            return;
+          }
+
+          const summary: OrderSummary = {
+            id: existing.id,
+            orderNumber: existing.orderNumber,
+            status: existing.status as any,
+            paymentStatus: existing.paymentStatus as any,
+            paymentMethod: existing.paymentMethod as any,
+            fulfillmentType: existing.fulfillmentType as any,
+            subtotal: Number(existing.subtotal),
+            customizationTotal: Number(existing.customizationTotal),
+            deliveryFee: Number(existing.deliveryFee),
+            discountTotal: Number(existing.discountTotal),
+            total: Number(existing.total),
+            currency: existing.currency,
+            createdAt: existing.createdAt.toISOString(),
+          };
+
+          res.json({ data: summary, error: null });
           return;
         }
-
-        const summary: OrderSummary = {
-          id: existing.id,
-          orderNumber: existing.orderNumber,
-          status: existing.status as any,
-          paymentStatus: existing.paymentStatus as any,
-          paymentMethod: existing.paymentMethod as any,
-          fulfillmentType: existing.fulfillmentType as any,
-          subtotal: Number(existing.subtotal),
-          customizationTotal: Number(existing.customizationTotal),
-          deliveryFee: Number(existing.deliveryFee),
-          discountTotal: Number(existing.discountTotal),
-          total: Number(existing.total),
-          currency: existing.currency,
-          createdAt: existing.createdAt.toISOString(),
-        };
-
-        res.json({ data: summary, error: null });
-        return;
+      } catch {
+        // Prisma offline - continue to transaction or demo fallback
       }
     }
 
     // Execute transaction
-    const createdOrder = await prisma.$transaction(async (tx) => {
+    let summary: OrderSummary;
+    try {
+      const createdOrder = await prisma.$transaction(async (tx) => {
       // 1. Fetch dishes
       const dishIds: string[] = Array.from(new Set<string>(items.map((i: any) => String(i.dishId))));
       const dishes = await tx.dish.findMany({
@@ -267,21 +404,38 @@ orderRoutes.post('/', validate(createOrderSchema), async (req, res, next) => {
       return order;
     });
 
-    const summary: OrderSummary = {
-      id: createdOrder.id,
-      orderNumber: createdOrder.orderNumber,
-      status: createdOrder.status as any,
-      paymentStatus: createdOrder.paymentStatus as any,
-      paymentMethod: createdOrder.paymentMethod as any,
-      fulfillmentType: createdOrder.fulfillmentType as any,
-      subtotal: Number(createdOrder.subtotal),
-      customizationTotal: Number(createdOrder.customizationTotal),
-      deliveryFee: Number(createdOrder.deliveryFee),
-      discountTotal: Number(createdOrder.discountTotal),
-      total: Number(createdOrder.total),
-      currency: createdOrder.currency,
-      createdAt: createdOrder.createdAt.toISOString(),
-    };
+      summary = {
+        id: createdOrder.id,
+        orderNumber: createdOrder.orderNumber,
+        status: createdOrder.status as any,
+        paymentStatus: createdOrder.paymentStatus as any,
+        paymentMethod: createdOrder.paymentMethod as any,
+        fulfillmentType: createdOrder.fulfillmentType as any,
+        subtotal: Number(createdOrder.subtotal),
+        customizationTotal: Number(createdOrder.customizationTotal),
+        deliveryFee: Number(createdOrder.deliveryFee),
+        discountTotal: Number(createdOrder.discountTotal),
+        total: Number(createdOrder.total),
+        currency: createdOrder.currency,
+        customerName: createdOrder.customerName,
+        customerDialCode: createdOrder.customerDialCode,
+        customerCountryCode: createdOrder.customerCountryCode,
+        preferredContactChannel: createdOrder.preferredContactChannel as any,
+        isWhatsAppAvailable: createdOrder.isWhatsAppAvailable,
+        hotelOrBuildingName: createdOrder.hotelOrBuildingName,
+        roomOrFloorNumber: createdOrder.roomOrFloorNumber,
+        deliveryAddress: createdOrder.deliveryAddress,
+        createdAt: createdOrder.createdAt.toISOString(),
+      };
+
+      orderEvents.emit('order:created', {
+        orderNumber: createdOrder.orderNumber,
+        order: summary,
+      });
+    } catch (dbErr: any) {
+      console.warn('[Orders] DB transaction failed, using in-memory demo order:', dbErr?.message || dbErr);
+      summary = createDemoOrder(customer, fulfillmentType, paymentMethod, customerNotes, items);
+    }
 
     res.status(201).json({ data: summary, error: null });
   } catch (err: any) {
@@ -299,23 +453,66 @@ orderRoutes.post('/lookup', validate(orderLookupSchema), async (req, res, next) 
     const { orderNumber, phone } = req.body;
     const phoneLookupHmac = hashPhone(phone);
 
-    const order = await prisma.order.findFirst({
-      where: {
-        orderNumber,
-        customerPhoneHash: phoneLookupHmac,
-      },
-      include: {
-        items: {
-          include: {
-            tasteCustomizations: true,
-            ingredientCustomizations: true,
-            substitutions: true,
+    let order: any = null;
+    try {
+      order = await prisma.order.findFirst({
+        where: {
+          orderNumber,
+          customerPhoneHash: phoneLookupHmac,
+        },
+        include: {
+          items: {
+            include: {
+              tasteCustomizations: true,
+              ingredientCustomizations: true,
+              substitutions: true,
+            },
           },
         },
-      },
-    });
+      });
+    } catch {
+      // DB offline
+    }
 
     if (!order) {
+      const demo = demoOrderStore.get(orderNumber);
+      if (demo) {
+        res.json({
+          data: {
+            orderNumber: demo.orderNumber,
+            status: demo.status,
+            paymentStatus: demo.paymentStatus,
+            fulfillmentType: demo.fulfillmentType,
+            subtotal: demo.subtotal,
+            deliveryFee: demo.deliveryFee,
+            total: demo.total,
+            currency: demo.currency,
+            items: (demo.items || []).map((i) => ({
+              dishName: i.dishName,
+              quantity: i.quantity,
+              finalUnitPrice: i.finalUnitPrice,
+              lineTotal: i.lineTotal,
+              tasteSelections: (i.tasteCustomizations || []).map((tc: any) => ({
+                name: tc.attribute,
+                value: tc.chosenValue,
+                label: tc.customerLabel,
+              })),
+              ingredientChanges: (i.ingredientCustomizations || []).map((ic: any) => ({
+                name: ic.ingredient,
+                action: ic.action,
+                selectedQuantity: ic.selectedQuantity,
+                unit: ic.unit,
+              })),
+              substitutions: [],
+            })),
+            createdAt: demo.createdAt,
+            updatedAt: demo.createdAt,
+          },
+          error: null,
+        });
+        return;
+      }
+
       res.status(404).json({
         data: null,
         error: { code: 'ORDER_NOT_FOUND', message: 'No matching order found with the provided details.' },

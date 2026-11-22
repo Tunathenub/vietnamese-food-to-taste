@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router';
 import { useTasteStore } from '../stores/taste-store';
 import { useCartStore } from '../stores/cart-store';
-import { useAuthStore } from '../stores/auth-store';
+import { useTranslation, getLocalizedDish } from '../i18n';
 import { api } from '../lib/api-client';
+import { CulturalStorySection } from '../components/CulturalStorySection';
 
 interface DishDetailData {
   id: string;
@@ -104,7 +105,7 @@ const FALLBACK_DETAILS: Record<string, DishDetailData> = {
         substituteIngredientName: 'Chả đậu hũ nướng nấm',
         reason: 'Ăn chay lành mạnh',
         priceDelta: -15000,
-      }
+      },
     ],
   },
   'pho-bo': {
@@ -144,7 +145,7 @@ const FALLBACK_DETAILS: Record<string, DishDetailData> = {
       },
     ],
     substitutions: [],
-  }
+  },
 };
 
 export function DishDetailPage() {
@@ -152,6 +153,7 @@ export function DishDetailPage() {
   const navigate = useNavigate();
   const { activeProfile, personalPreferences } = useTasteStore();
   const addItem = useCartStore((state) => state.addItem);
+  const { t, language, formatPrice } = useTranslation();
 
   const [dish, setDish] = useState<DishDetailData | null>(() => {
     return dishSlug ? (FALLBACK_DETAILS[dishSlug] ?? null) : null;
@@ -203,7 +205,7 @@ export function DishDetailPage() {
       if (fallback) {
         initDishData(fallback);
       } else {
-        setError('Không tìm thấy món ăn này!');
+        setError(t.common.error);
       }
     }
 
@@ -213,7 +215,6 @@ export function DishDetailPage() {
   function initDishData(data: DishDetailData) {
     setDish(data);
 
-    // Pre-fill taste values based on activeProfile + personalPreferences
     const initialTastes: Record<string, number> = {};
     if (data.tasteConfigurations) {
       for (const config of data.tasteConfigurations) {
@@ -228,7 +229,6 @@ export function DishDetailPage() {
     }
     setTasteValues(initialTastes);
 
-    // Pre-fill ingredient quantities
     const initialIngs: Record<string, number> = {};
     if (data.ingredients) {
       for (const ing of data.ingredients) {
@@ -258,46 +258,36 @@ export function DishDetailPage() {
 
   const handleAddToCart = () => {
     if (!dish) return;
+    const loc = getLocalizedDish(dish.slug, dish.name, dish.shortDescription, language);
 
     addItem({
       dishId: dish.id,
-      dishName: dish.name,
+      dishName: loc.name,
       dishSlug: dish.slug,
       quantity,
-      basePrice: dish.basePrice + customizationDelta,
+      basePrice: dish.basePrice,
       currency: 'VND',
+      tasteProfileCode: activeProfile?.code,
       tasteValues,
       ingredientQuantities,
       substitutionIds: selectedSubstitutions,
       notes,
     });
+
     setAddedToast(true);
-    setTimeout(() => setAddedToast(false), 3000);
-  };
-
-  const handleBuyNow = () => {
-    if (!dish) return;
-
-    addItem({
-      dishId: dish.id,
-      dishName: dish.name,
-      dishSlug: dish.slug,
-      quantity,
-      basePrice: dish.basePrice + customizationDelta,
-      currency: 'VND',
-      tasteValues,
-      ingredientQuantities,
-      substitutionIds: selectedSubstitutions,
-      notes,
-    });
-    navigate('/checkout');
+    setTimeout(() => {
+      setAddedToast(false);
+      navigate('/cart');
+    }, 1200);
   };
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
-        <p className="text-red-500 font-bold">{error}</p>
-        <Link to="/menu" className="mt-4 text-orange-600 underline">Quay lại thực đơn</Link>
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <p className="text-red-600 font-bold">{error}</p>
+        <Link to="/menu" className="mt-4 text-orange-600 underline">
+          {t.common.backToMenu}
+        </Link>
       </div>
     );
   }
@@ -306,11 +296,13 @@ export function DishDetailPage() {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col">
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-gray-500">Đang tải thông tin món ăn...</p>
+          <p className="text-gray-500">{t.common.loading}</p>
         </div>
       </div>
     );
   }
+
+  const locDish = getLocalizedDish(dish.slug, dish.name, dish.shortDescription, language);
 
   let customizationDelta = 0;
   if (dish.tasteConfigurations) {
@@ -341,31 +333,37 @@ export function DishDetailPage() {
     <div className="min-h-screen bg-slate-50 text-gray-900 flex flex-col">
       <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
         <div className="mb-6 flex items-center gap-2 text-xs text-gray-500">
-          <Link to="/" className="hover:text-gray-900">Trang chủ</Link>
+          <Link to="/" className="hover:text-gray-900">{t.nav.home}</Link>
           <span>/</span>
-          <Link to="/menu" className="hover:text-gray-900">Thực đơn</Link>
+          <Link to="/menu" className="hover:text-gray-900">{t.nav.menu}</Link>
           <span>/</span>
-          <span className="font-semibold text-gray-900">{dish.name}</span>
+          <span className="font-semibold text-gray-900">{locDish.name}</span>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Left Column: Image and Description */}
           <div className="lg:col-span-5">
-            <div className="sticky top-20 rounded-2xl bg-white border border-gray-200 overflow-hidden shadow-sm">
+            <div className="sticky top-20 rounded-2xl bg-white border border-gray-200 overflow-hidden shadow-xs">
               <div className="relative h-72 sm:h-80 overflow-hidden bg-gray-100">
-                <img src={dish.imageUrl} alt={dish.name} className="h-full w-full object-cover" />
-                <span className="absolute top-4 left-4 rounded-full bg-black/60 backdrop-blur px-3 py-1 text-xs font-semibold text-white">
-                  ⏱ {dish.preparationTimeMinutes} phút chuẩn bị
+                <img src={dish.imageUrl} alt={locDish.name} className="h-full w-full object-cover" />
+                <span className="absolute top-4 left-4 rounded-full bg-black/60 backdrop-blur-xs px-3 py-1 text-xs font-semibold text-white">
+                  ⏱ {dish.preparationTimeMinutes} {t.common.minutes} {t.dish.prepTime.toLowerCase()}
                 </span>
               </div>
               <div className="p-6">
                 <div className="flex items-start justify-between gap-4 mb-2">
-                  <h1 className="text-3xl font-extrabold text-gray-900 leading-tight">{dish.name}</h1>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 leading-tight">
+                    {locDish.name}
+                  </h1>
                 </div>
-                <p className="text-gray-600 leading-relaxed text-sm mb-6">{dish.description}</p>
+                <p className="text-gray-600 leading-relaxed text-xs sm:text-sm mb-6">
+                  {locDish.shortDescription || dish.description}
+                </p>
                 <div className="flex items-end justify-between border-t border-gray-100 pt-5">
                   <div>
-                    <div className="text-2xl font-black text-orange-600">
-                      {dish.basePrice.toLocaleString('vi-VN')} ₫
+                    <div className="text-[11px] text-gray-400 font-medium mb-0.5">{t.common.price}</div>
+                    <div className="text-xl sm:text-2xl font-black text-orange-600">
+                      {formatPrice(dish.basePrice)}
                     </div>
                   </div>
                 </div>
@@ -373,13 +371,19 @@ export function DishDetailPage() {
             </div>
           </div>
 
+          {/* Right Column: Customizer */}
           <div className="lg:col-span-7 space-y-6">
+            {/* 1. Taste Configurations */}
             {dish.tasteConfigurations && dish.tasteConfigurations.length > 0 && (
-              <div className="rounded-2xl bg-white p-6 border border-gray-200 shadow-sm">
+              <div className="rounded-2xl bg-white p-6 border border-gray-200 shadow-xs">
                 <div className="flex items-center justify-between mb-6 pb-3 border-b border-gray-100">
                   <div>
-                    <h2 className="text-lg font-bold text-gray-900">1. Tinh chỉnh các vị chính</h2>
-                    <p className="text-xs text-gray-500">Kéo thanh trượt để thay đổi mức độ gia vị</p>
+                    <h2 className="text-lg font-bold text-gray-900">
+                      1. {t.dish.customizationTitle}
+                    </h2>
+                    <p className="text-xs text-gray-500">
+                      {t.dish.customizationSubtitle}
+                    </p>
                   </div>
                   <span className="text-xl">🌶️</span>
                 </div>
@@ -390,12 +394,17 @@ export function DishDetailPage() {
                     const options = tc.options || [];
                     const currentOpt = options.find((o) => o.value === currentValue) ?? options[0];
 
+                    // In Vietnamese, preserve the dish-specific taste config name (e.g. Độ ngọt nước chấm)
+                    const attrKey = tc.code as keyof typeof t.taste.attributes;
+                    const localizedAttr = t.taste.attributes[attrKey];
+                    const labelText = language === 'vi' ? tc.name : (localizedAttr ? localizedAttr.name : tc.name);
+
                     return (
                       <div key={tc.code} className="rounded-xl bg-slate-50 p-4 border border-gray-100">
                         <div className="flex justify-between items-center mb-2">
-                          <label className="text-sm font-bold text-gray-800">{tc.name}</label>
-                          <span className="rounded-md bg-orange-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-sm">
-                            {currentOpt?.customerLabel ?? `Mức ${currentValue}`}
+                          <label className="text-sm font-bold text-gray-800">{labelText}</label>
+                          <span className="rounded-md bg-orange-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-2xs">
+                            {localizedAttr?.levels[currentValue] ?? currentOpt?.customerLabel ?? `Level ${currentValue}`}
                           </span>
                         </div>
                         <input
@@ -408,9 +417,9 @@ export function DishDetailPage() {
                           className="w-full accent-orange-600 cursor-pointer h-2"
                         />
                         <div className="mt-2 flex items-center justify-between text-[11px] text-gray-500">
-                          <span>{options[0]?.customerLabel ?? `Mức ${tc.minValue}`}</span>
-                          <span className="italic text-gray-400">{currentOpt?.customerDescription}</span>
-                          <span>{options[options.length - 1]?.customerLabel ?? `Mức ${tc.maxValue}`}</span>
+                          <span>{localizedAttr?.levels[tc.minValue] ?? options[0]?.customerLabel ?? `Min ${tc.minValue}`}</span>
+                          <span className="italic text-gray-400">{localizedAttr?.desc || currentOpt?.customerDescription}</span>
+                          <span>{localizedAttr?.levels[tc.maxValue] ?? options[options.length - 1]?.customerLabel ?? `Max ${tc.maxValue}`}</span>
                         </div>
                       </div>
                     );
@@ -419,12 +428,17 @@ export function DishDetailPage() {
               </div>
             )}
 
+            {/* 2. Ingredients Customization */}
             {dish.ingredients && dish.ingredients.length > 0 && (
-              <div className="rounded-2xl bg-white p-6 border border-gray-200 shadow-sm">
+              <div className="rounded-2xl bg-white p-6 border border-gray-200 shadow-xs">
                 <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
                   <div>
-                    <h2 className="text-lg font-bold text-gray-900">2. Tùy chỉnh nguyên liệu</h2>
-                    <p className="text-xs text-gray-500">Thêm thịt, giảm ớt hoặc bỏ rau thơm</p>
+                    <h2 className="text-lg font-bold text-gray-900">
+                      2. {t.dish.ingredientsTitle}
+                    </h2>
+                    <p className="text-xs text-gray-500">
+                      {t.common.quantity} & {t.dish.ingredientsTitle.toLowerCase()}
+                    </p>
                   </div>
                   <span className="text-xl">🥩</span>
                 </div>
@@ -437,9 +451,11 @@ export function DishDetailPage() {
                         <div>
                           <div className="font-semibold text-sm text-gray-900">{ing.name}</div>
                           <div className="text-[11px] text-gray-500">
-                            Mặc định: {ing.defaultQuantity} {ing.unit}
+                            {t.taste.resetDefaults.split(' ')[0]}: {ing.defaultQuantity} {ing.unit}
                             {ing.priceDeltaPerStep > 0 && (
-                              <span className="text-orange-600 ml-1">(+{ing.priceDeltaPerStep.toLocaleString('vi-VN')} ₫ / {ing.unit} thêm)</span>
+                              <span className="text-orange-600 ml-1">
+                                (+{formatPrice(ing.priceDeltaPerStep, false)} / {ing.unit})
+                              </span>
                             )}
                           </div>
                         </div>
@@ -467,7 +483,9 @@ export function DishDetailPage() {
                             </button>
                           </div>
                         ) : (
-                          <span className="text-xs font-medium text-gray-400">Không thể chỉnh</span>
+                          <span className="text-xs font-medium text-gray-400">
+                            {t.common.optional}
+                          </span>
                         )}
                       </div>
                     );
@@ -476,12 +494,17 @@ export function DishDetailPage() {
               </div>
             )}
 
+            {/* 3. Substitutions */}
             {dish.substitutions && dish.substitutions.length > 0 && (
-              <div className="rounded-2xl bg-white p-6 border border-gray-200 shadow-sm">
+              <div className="rounded-2xl bg-white p-6 border border-gray-200 shadow-xs">
                 <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
                   <div>
-                    <h2 className="text-lg font-bold text-gray-900">3. Thay thế nguyên liệu (Ăn chay)</h2>
-                    <p className="text-xs text-gray-500">Đổi nguyên liệu theo chế độ ăn riêng</p>
+                    <h2 className="text-lg font-bold text-gray-900">
+                      3. {t.dish.substitutionsTitle}
+                    </h2>
+                    <p className="text-xs text-gray-500">
+                      {t.dish.substitutionsDesc}
+                    </p>
                   </div>
                   <span className="text-xl">🥗</span>
                 </div>
@@ -491,16 +514,23 @@ export function DishDetailPage() {
                     const isChecked = selectedSubstitutions.includes(sub.id);
                     return (
                       <label key={sub.id} className={`flex items-start gap-3 rounded-xl p-4 border cursor-pointer transition ${isChecked ? 'border-orange-500 bg-orange-50' : 'border-gray-200 bg-slate-50'}`}>
-                        <input type="checkbox" checked={isChecked} onChange={() => handleToggleSub(sub.id)} className="mt-0.5 accent-orange-600 h-4 w-4" />
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleToggleSub(sub.id)}
+                          className="mt-0.5 accent-orange-600 h-4 w-4"
+                        />
                         <div className="flex-1 text-xs">
                           <div className="font-bold text-gray-900 text-sm">
-                            Thay <span className="underline">{sub.originalIngredientName}</span> bằng <span className="text-orange-600 font-extrabold">{sub.substituteIngredientName}</span>
+                            {sub.originalIngredientName} → <span className="text-orange-600 font-extrabold">{sub.substituteIngredientName}</span>
                           </div>
                           <div className="text-gray-500 mt-0.5">{sub.reason}</div>
                         </div>
-                        <div className="text-xs font-bold text-green-700 bg-green-50 px-2 py-1 rounded">
-                          {sub.priceDelta > 0 ? `+${sub.priceDelta.toLocaleString('vi-VN')} ₫` : `${sub.priceDelta.toLocaleString('vi-VN')} ₫`}
-                        </div>
+                        {sub.priceDelta !== 0 && (
+                          <span className="font-bold text-xs text-gray-600">
+                            {sub.priceDelta > 0 ? `+${formatPrice(sub.priceDelta, false)}` : formatPrice(sub.priceDelta, false)}
+                          </span>
+                        )}
                       </label>
                     );
                   })}
@@ -508,59 +538,78 @@ export function DishDetailPage() {
               </div>
             )}
 
-            <div className="rounded-2xl bg-white p-6 border border-gray-200 shadow-sm">
-              <label className="block text-sm font-bold text-gray-800 mb-2">Ghi chú riêng cho đầu bếp</label>
-              <textarea
-                rows={2}
-                placeholder="Ví dụ: Để chanh và ớt riêng ra đĩa nhỏ..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 p-3 text-xs focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-              />
+            {/* 4. Notes & Order Actions */}
+            <div className="rounded-2xl bg-white p-6 border border-gray-200 shadow-xs space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-900 mb-1">
+                  {t.dish.specialNotes}
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder={t.dish.specialNotesPlaceholder}
+                  rows={2}
+                  className="w-full rounded-xl border border-gray-300 p-3 text-xs focus:ring-2 focus:ring-orange-500 focus:outline-hidden"
+                />
+              </div>
 
-              <div className="mt-6 pt-5 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              {/* Allergen Warning Box */}
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3.5 text-xs text-amber-900 flex items-start gap-2.5">
+                <span className="text-base">⚠️</span>
                 <div>
-                  <div className="text-xs text-gray-500">Tổng cộng phần ăn:</div>
-                  <div className="text-2xl font-black text-orange-600">
-                    {totalItemPrice.toLocaleString('vi-VN')} ₫
+                  <span className="font-bold block">{t.dish.allergensWarningTitle}</span>
+                  <span className="text-[11px] text-amber-800">{t.dish.allergensNotice}</span>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-bold text-gray-700">{t.common.quantity}:</span>
+                  <div className="flex items-center rounded-xl border border-gray-200 bg-slate-50 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                      disabled={quantity <= 1}
+                      className="h-8 w-8 rounded-lg bg-white font-bold text-gray-700 hover:bg-gray-100 disabled:opacity-40"
+                    >
+                      -
+                    </button>
+                    <span className="w-10 text-center font-bold text-sm text-gray-900">{quantity}</span>
+                    <button
+                      type="button"
+                      onClick={() => setQuantity((q) => q + 1)}
+                      className="h-8 w-8 rounded-lg bg-white font-bold text-gray-700 hover:bg-gray-100"
+                    >
+                      +
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <div className="flex items-center rounded-xl border border-gray-200 bg-slate-50 p-1">
-                    <button type="button" onClick={() => setQuantity((q) => Math.max(1, q - 1))} className="h-8 w-8 rounded-lg font-bold text-gray-700 hover:bg-gray-200">-</button>
-                    <span className="w-8 text-center text-sm font-bold">{quantity}</span>
-                    <button type="button" onClick={() => setQuantity((q) => q + 1)} className="h-8 w-8 rounded-lg font-bold text-gray-700 hover:bg-gray-200">+</button>
+                <div className="flex items-center gap-4 w-full sm:w-auto justify-end">
+                  <div className="text-right">
+                    <div className="text-[10px] text-gray-400 font-bold uppercase">{t.common.total}</div>
+                    <div className="text-xl font-black text-orange-600">
+                      {formatPrice(totalItemPrice)}
+                    </div>
                   </div>
 
                   <button
                     type="button"
                     onClick={handleAddToCart}
-                    className="flex-1 sm:flex-none rounded-xl bg-orange-100 hover:bg-orange-200 text-orange-950 border border-orange-300 px-4 py-2.5 text-xs font-bold transition shadow-2xs"
+                    disabled={addedToast}
+                    className="flex-1 sm:flex-none rounded-xl bg-orange-600 px-6 py-3 font-bold text-white shadow-md hover:bg-orange-700 transition disabled:opacity-50 text-sm"
                   >
-                    Thêm vào giỏ 🛒
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleBuyNow}
-                    className="flex-1 sm:flex-none rounded-xl bg-orange-600 hover:bg-orange-700 px-5 py-2.5 text-xs font-bold text-white shadow-md transition"
-                  >
-                    ⚡ Đặt ngay (Khách vãng lai) →
+                    {addedToast ? `✓ ${t.common.addedToCart}` : `🛒 ${t.common.addToCart}`}
                   </button>
                 </div>
               </div>
-
-              {addedToast && (
-                <div className="mt-4 rounded-xl bg-green-50 border border-green-200 p-3 text-xs text-green-800 flex items-center justify-between animate-fade-in">
-                  <span>✓ Đã thêm vào giỏ hàng thành công!</span>
-                  <button type="button" onClick={() => navigate('/cart')} className="font-bold underline text-green-900">
-                    Đến Giỏ hàng ngay →
-                  </button>
-                </div>
-              )}
             </div>
           </div>
+        </div>
+
+        {/* AI Cultural Dish Storyteller & Dining Etiquette */}
+        <div className="mt-12">
+          <CulturalStorySection dishSlug={dishSlug} />
         </div>
       </main>
     </div>

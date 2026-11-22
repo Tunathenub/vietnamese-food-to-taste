@@ -3,12 +3,14 @@
   "private": true,
   "scripts": {
     "dev": "turbo dev",
+    "dev:all": "pnpm --filter @vft/api --filter @vft/web --parallel dev",
     "build": "turbo build",
     "lint": "turbo lint",
     "db:generate": "pnpm --filter @vft/api db:generate",
     "db:migrate": "pnpm --filter @vft/api db:migrate",
     "db:seed": "pnpm --filter @vft/api db:seed",
-    "db:studio": "pnpm --filter @vft/api db:studio"
+    "db:studio": "pnpm --filter @vft/api db:studio",
+    "verify": "pnpm --filter @vft/api exec tsx ../../scripts/verify-all.ts"
   },
   "engines": {
     "node": ">=20"

@@ -11,7 +11,7 @@ export const ingredientQuantitiesSchema = z.record(z.string(), z.number().int().
 export const validateCustomizationSchema = z.object({
   tasteValues: tasteValuesSchema.optional().default({}),
   ingredientQuantities: ingredientQuantitiesSchema.optional().default({}),
-  substitutionIds: z.array(z.string().uuid()).optional().default([]),
+  substitutionIds: z.array(z.string().min(1)).optional().default([]),
   notes: z.string().max(300).optional().default(''),
 });
 
@@ -37,12 +37,12 @@ export type CustomerInput = z.infer<typeof customerSchema>;
 // ── Order Item Schema ──
 
 export const orderItemSchema = z.object({
-  dishId: z.string().uuid(),
+  dishId: z.string().min(1),
   quantity: z.number().int().min(1).max(20),
   tasteProfileCode: z.string().optional(),
   tasteValues: tasteValuesSchema.optional().default({}),
   ingredientQuantities: ingredientQuantitiesSchema.optional().default({}),
-  substitutionIds: z.array(z.string().uuid()).optional().default([]),
+  substitutionIds: z.array(z.string().min(1)).optional().default([]),
   configurationHash: z.string().optional(),
   notes: z.string().max(300).optional().default(''),
 });
