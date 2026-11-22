@@ -593,9 +593,6 @@ async function runVerification() {
       `Targeted stream received update for ${targetOrderNumber} and properly filtered out unrelated order events.`
     );
 
-    // Close test server
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-
     // C. Verify Web Client Audio & Page Integration
     let audioRanWithoutError = true;
     try {
@@ -661,37 +658,40 @@ async function runVerification() {
     // 6. Verify Taste Analytics Dashboard (Backend & UI)
     // -----------------------------------------------------------------
     console.log('\n--- Checking Taste Analytics Dashboard ---');
-    // API Check: /api/analytics/overview
+    // Close test server after analytics checks
     const [overviewData, radarData, ingData, exportCsv] = await Promise.all([
       new Promise<any>((resolve, reject) => {
-        http.get('http://localhost:3000/api/analytics/overview', (res) => {
+        http.get(`http://127.0.0.1:${port}/api/analytics/overview`, (res) => {
           let data = '';
           res.on('data', (c) => (data += c));
           res.on('end', () => resolve(JSON.parse(data)));
         }).on('error', reject);
       }),
       new Promise<any>((resolve, reject) => {
-        http.get('http://localhost:3000/api/analytics/taste-radar?countryCode=KR', (res) => {
+        http.get(`http://127.0.0.1:${port}/api/analytics/taste-radar?countryCode=KR`, (res) => {
           let data = '';
           res.on('data', (c) => (data += c));
           res.on('end', () => resolve(JSON.parse(data)));
         }).on('error', reject);
       }),
       new Promise<any>((resolve, reject) => {
-        http.get('http://localhost:3000/api/analytics/ingredients', (res) => {
+        http.get(`http://127.0.0.1:${port}/api/analytics/ingredients`, (res) => {
           let data = '';
           res.on('data', (c) => (data += c));
           res.on('end', () => resolve(JSON.parse(data)));
         }).on('error', reject);
       }),
       new Promise<string>((resolve, reject) => {
-        http.get('http://localhost:3000/api/analytics/export', (res) => {
+        http.get(`http://127.0.0.1:${port}/api/analytics/export`, (res) => {
           let data = '';
           res.on('data', (c) => (data += c));
           res.on('end', () => resolve(data));
         }).on('error', reject);
       }),
     ]);
+
+    // Close test server now that all HTTP requests are complete
+    await new Promise<void>((resolve) => server.close(() => resolve()));
 
     assert(
       overviewData.data &&
