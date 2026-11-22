@@ -8,4 +8,6 @@ dist/
 coverage/
 .demo-orders-cache.json
 *.demo-orders-cache.json
+.vite/
+
 
