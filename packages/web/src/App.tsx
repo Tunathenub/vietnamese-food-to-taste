@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router';
 import { HomePage } from './pages/HomePage';
 import { MenuPage } from './pages/MenuPage';
@@ -11,6 +11,7 @@ import { OrderLookupPage } from './pages/OrderLookupPage';
 import { OrderDetailPage } from './pages/OrderDetailPage';
 import { StaffOrdersPage } from './pages/StaffOrdersPage';
 import { StaffOrderDetailPage } from './pages/StaffOrderDetailPage';
+import { TasteAnalyticsPage } from './pages/TasteAnalyticsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AuthPage } from './pages/AuthPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
@@ -18,6 +19,7 @@ import { NotFoundPage } from './pages/NotFoundPage';
 
 import { Navbar } from './components/Navbar';
 import { OnboardingModal } from './components/OnboardingModal';
+import { AITasteConciergeModal } from './components/AITasteConciergeModal';
 import { useAuthStore } from './stores/auth-store';
 
 function StaffRouteGuard({ children }: { children: React.ReactNode }) {
@@ -60,6 +62,7 @@ export default function App() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <Navbar />
       <OnboardingModal />
+      <AITasteConciergeModal />
       <main className="flex-grow">
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -84,6 +87,14 @@ export default function App() {
             element={
               <StaffRouteGuard>
                 <StaffOrderDetailPage />
+              </StaffRouteGuard>
+            }
+          />
+          <Route
+            path="/staff/analytics"
+            element={
+              <StaffRouteGuard>
+                <TasteAnalyticsPage />
               </StaffRouteGuard>
             }
           />

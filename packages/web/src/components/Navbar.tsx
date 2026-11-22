@@ -2,9 +2,12 @@ import { Link, useLocation } from 'react-router';
 import { useCartStore } from '../stores/cart-store';
 import { useTasteStore } from '../stores/taste-store';
 import { useAuthStore } from '../stores/auth-store';
+import { useTranslation } from '../i18n';
+import { LanguageSelector } from './LanguageSelector';
 
 export function Navbar() {
   const location = useLocation();
+  const { t } = useTranslation();
   const totalCartItems = useCartStore((state) => state.totalItems());
   const activeProfile = useTasteStore((state) => state.activeProfile);
   const { user, logout } = useAuthStore();
@@ -12,12 +15,17 @@ export function Navbar() {
   const isStaffOrAdmin = Boolean(user && (user.role === 'STAFF' || user.role === 'ADMIN'));
 
   const navLinks = [
-    { to: '/', label: 'Trang chủ' },
-    { to: '/taste-profiles', label: 'Gu khẩu vị' },
-    { to: '/menu', label: 'Thực đơn' },
-    { to: '/orders/lookup', label: 'Tra cứu đơn' },
-    ...(isStaffOrAdmin ? [{ to: '/staff/orders', label: '👨‍🍳 Bếp & Quản trị' }] : []),
+    { to: '/', label: t.nav.home },
+    { to: '/taste-profiles', label: t.nav.tasteProfile },
+    { to: '/menu', label: t.nav.menu },
+    { to: '/orders/lookup', label: t.nav.orderLookup },
+    ...(isStaffOrAdmin ? [{ to: '/staff/orders', label: t.nav.staffPortal }] : []),
   ];
+
+  // Localize active profile name if it matches preset code
+  const localizedProfileName =
+    t.taste.presetProfiles[activeProfile.code as keyof typeof t.taste.presetProfiles]?.name ||
+    activeProfile.name.split(' (')[0];
 
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur shadow-xs border-b border-gray-100">
@@ -28,7 +36,9 @@ export function Navbar() {
             <div className="font-extrabold text-xl tracking-tight text-gray-900">
               Vietnamese<span className="text-orange-600">Taste</span>
             </div>
-            <div className="text-[10px] text-gray-500 font-medium tracking-wide">ẨM THỰC VIỆT TÙY BIẾN KHẨU VỊ</div>
+            <div className="text-[10px] text-gray-500 font-medium tracking-wide">
+              {t.nav.brandTagline}
+            </div>
           </div>
         </Link>
 
@@ -49,27 +59,30 @@ export function Navbar() {
           })}
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          {/* Language Switcher */}
+          <LanguageSelector />
+
           {user ? (
-            <div className="flex items-center gap-2 mr-2">
+            <div className="flex items-center gap-2 mr-1">
               <Link
                 to="/profile"
                 className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-700 hover:text-orange-600 transition"
               >
                 <span>👋</span>
-                <span className="max-w-[120px] truncate">{user.name}</span>
+                <span className="max-w-[100px] sm:max-w-[120px] truncate">{user.name}</span>
                 {(user.role === 'STAFF' || user.role === 'ADMIN') && (
                   <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md border border-amber-300">
-                    {user.role === 'ADMIN' ? 'Quản trị' : 'Bếp'}
+                    {user.role === 'ADMIN' ? t.nav.roleAdmin : t.nav.roleStaff}
                   </span>
                 )}
               </Link>
               <button
                 onClick={logout}
                 className="text-xs font-semibold text-gray-400 hover:text-red-600 transition ml-1"
-                title="Đăng xuất"
+                title={t.nav.logout}
               >
-                Thoát
+                {t.nav.logout}
               </button>
             </div>
           ) : (
@@ -78,18 +91,18 @@ export function Navbar() {
               className="mr-1 inline-flex items-center gap-1 text-sm font-bold text-gray-700 hover:text-orange-600 transition px-2.5 py-1.5 rounded-lg hover:bg-gray-50 border border-transparent hover:border-gray-200"
             >
               <span>🔑</span>
-              <span>Đăng nhập</span>
+              <span>{t.nav.login}</span>
             </Link>
           )}
 
           {/* Active Taste Badge */}
           <Link
             to="/taste-profiles"
-            className="flex items-center gap-1.5 rounded-full bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-100 border border-orange-200 transition-colors"
-            title="Đổi gu khẩu vị"
+            className="flex items-center gap-1.5 rounded-full bg-orange-50 px-2.5 sm:px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-100 border border-orange-200 transition-colors"
+            title={t.nav.changeTaste}
           >
             <span>{activeProfile.flag}</span>
-            <span className="hidden sm:inline">{activeProfile.name.split(' (')[0]}</span>
+            <span className="hidden sm:inline font-semibold">{localizedProfileName}</span>
             <span className="text-orange-400 font-normal">✎</span>
           </Link>
 
@@ -97,6 +110,7 @@ export function Navbar() {
           <Link
             to="/cart"
             className="relative flex items-center justify-center rounded-xl bg-orange-600 p-2 text-white hover:bg-orange-700 transition shadow-sm"
+            title={t.nav.cart}
           >
             <span className="text-base">🛒</span>
             {totalCartItems > 0 && (

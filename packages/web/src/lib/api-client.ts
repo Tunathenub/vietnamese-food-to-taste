@@ -20,9 +20,21 @@ export const API_BASE = cleanUrl
  * Automatically handles leading slashes and prevents duplicate `/api/api/...` paths.
  */
 export function buildUrl(path: string): string {
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   if (cleanPath.startsWith('/api/')) {
-    return cleanUrl ? `${cleanUrl}${cleanPath}` : cleanPath;
+    if (cleanUrl) return `${cleanUrl}${cleanPath}`;
+    if (typeof window === 'undefined') {
+      const nodeHost = (globalThis as any).process?.env?.API_URL || 'http://127.0.0.1:3000';
+      return `${nodeHost}${cleanPath}`;
+    }
+    return cleanPath;
+  }
+  if (typeof window === 'undefined' && !cleanUrl) {
+    const nodeHost = (globalThis as any).process?.env?.API_URL || 'http://127.0.0.1:3000';
+    return `${nodeHost}${API_BASE}${cleanPath}`;
   }
   return `${API_BASE}${cleanPath}`;
 }

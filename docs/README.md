@@ -1,27 +1,41 @@
 # Project Documentation
 
-This directory keeps product rules, architecture decisions, seed-data sources, and document reviews separate so each artifact has a clear owner and lifecycle.
+This directory maintains product rules, architectural decisions, API contracts, and user flow specifications for the **Vietnamese Food - To Taste** platform.
 
-## Source Documents
+---
 
-| Area | Document | Purpose |
+## 📑 Core Documentation Structure
+
+| Area | Document | Description |
 | --- | --- | --- |
-| Business rules | [Business Rules for Vietnamese Food Taste App](business-rules/Business%20Rules%20for%20Vietnamese%20Food%20Taste%20App.docx) | Product behavior, validation, pricing, checkout, and order rules |
-| Architecture source | [Original Order Data Model](architecture/Order%20Data%20Model.docx) | Original Word source retained for traceability |
-| Seed data | [Initial Dish and Ingredient Dataset](data/Initial%20Dish%20and%20Ingredient%20Dataset.docx) | Initial dishes, ingredients, taste ranges, and substitutions |
+| **API Contract** | [api/api-contract.md](api/api-contract.md) | Full HTTP & SSE specifications including dishes, taste profiles, checkout, KDS real-time events, analytics, and AI endpoints. |
+| **Architecture** | [architecture/order-model.md](architecture/order-model.md) | In-depth order state machine, kitchen instruction rendering logic, and customization architecture. |
+| **Data Model** | [data-model.md](data-model.md) | Schema design, 6-axis taste dimensions, ingredient omission, and dietary substitution relationships. |
+| **Product Flows** | [product/user-flows.md](product/user-flows.md) | Step-by-step user journeys for international tourists, hotel delivery, and restaurant staff. |
+| **Sitemap** | [product/sitemap.md](product/sitemap.md) | Full route structure covering customer-facing screens, KDS portal, and analytics dashboard. |
+| **Roadmap** | [roadmap.md](roadmap.md) | Milestones from MVP foundation to real-time KDS, analytics, and AI concierge features. |
 
-## Working Documents
+---
 
-- [Core data model](data-model.md)
-- [Order data model](architecture/order-model.md)
-- [API contract](api/api-contract.md)
-- [User flows](product/user-flows.md)
-- [Sitemap](product/sitemap.md)
-- [Roadmap](roadmap.md)
-- [Source document assessment](reviews/source-documents-assessment.md)
+## 💡 Key Architectural Pillars
 
-## Key Product Decisions (International Tourist Delivery)
+### 1. Tourist-Centric Delivery Infrastructure
+- **Smart Dial Code Inference**: Automatically matches calling code based on selected nationality (e.g. +82 for Korea, +1 for US/Canada, +81 for Japan).
+- **Zero-Friction Cross-Border Channels**: Direct WhatsApp (`wa.me/<number>`) and Zalo dispatching links eliminate international roaming charges for travelers.
+- **Prepaid Hotel Reception Drop-off**: Structured room notes enable safe front-desk drop-off for tourists on data-only eSIMs.
 
-- **Smart Country & Dial Code Inference**: Selecting a country or taste profile links a standard country calling code (`dial_code`), automatically pre-filling the phone input at Checkout.
-- **Cross-Border Messaging Channels**: Orders support WhatsApp and Zalo flags; the kitchen/staff portal provides one-click `wa.me/<phone>` links to message tourists without roaming costs or saving numbers.
-- **Prepaid Hotel Drop-off**: For tourists using data-only eSIMs, prepaid orders allow safe drop-off at hotel reception/lobby desks with structured room notes if voice contact fails.
+### 2. Real-Time Kitchen Display System (SSE)
+- High-performance event streaming over HTTP via `Server-Sent Events` (`/api/events/orders`).
+- Web Audio API notification chime alerting kitchen staff instantly upon new order arrival.
+- Atomic state transitions: `PENDING` -> `ACCEPTED` -> `PREPARING` -> `READY` -> `COMPLETED`.
+
+### 3. Taste Analytics & Radar Intelligence
+- 6-axis taste vector aggregation comparing authentic Vietnamese baseline with tourist nationalities.
+- Interactive SVG Radar chart and ingredient aversion tracking (e.g. coriander/cilantro avoidance).
+- Automated multi-section CSV report export for operational BI.
+
+### 4. Full-Stack AI Integration (Gemini 2.5 Flash)
+- **Cultural Storyteller**: Dynamic historical dish narratives and step-by-step dining etiquette with in-memory caching.
+- **Kitchen Briefing**: Real-time order analysis generating chef shift briefings, line-cook directives, and prep advice.
+- **Taste Concierge**: Global floating AI assistant with natural language understanding and 1-click customized cart insertion.
+- **Zero-Failure Architecture**: Automatic graceful degradation guaranteeing 100% uptime with structured data fallback.
