@@ -2,11 +2,13 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { changeOrderStatusSchema } from '@vft/shared/schemas';
 import { validate } from '../middleware/validate.js';
+import { requireRole } from '../middleware/auth.js';
 import type { OrderStatus } from '@vft/shared';
 import { orderEvents } from '../services/order-events.js';
 import { demoOrderStore } from '../services/demo-orders.js';
 
 export const staffRoutes: Router = Router();
+staffRoutes.use(requireRole('STAFF', 'ADMIN'));
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   PENDING: ['CONFIRMED', 'CANCELLED'],

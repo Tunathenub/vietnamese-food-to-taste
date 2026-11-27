@@ -28,8 +28,16 @@ const FALLBACK_INGREDIENT_CODE_MAP: Record<string, string> = {
 };
 
 // Helper to compute phone lookup hash
+function getPhoneSecret(): string {
+  const secret = process.env.PHONE_SECRET?.trim();
+  if (process.env.NODE_ENV === 'production' && !secret) {
+    throw new Error('PHONE_SECRET must be configured in production.');
+  }
+  return secret || 'vft_secret';
+}
+
 function hashDigits(digits: string): string {
-  return crypto.createHmac('sha256', process.env.PHONE_SECRET ?? 'vft_secret').update(digits).digest('hex');
+  return crypto.createHmac('sha256', getPhoneSecret()).update(digits).digest('hex');
 }
 
 function hashPhone(phone: string): string {

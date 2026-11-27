@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireRole } from '../middleware/auth.js';
 import {
   generateTasteConcierge,
   generateCulturalDishStory,
@@ -52,7 +53,7 @@ aiRoutes.post('/dish-story', async (req, res) => {
 });
 
 // POST /api/ai/kitchen-briefing
-aiRoutes.post('/kitchen-briefing', async (req, res) => {
+aiRoutes.post('/kitchen-briefing', requireRole('STAFF', 'ADMIN'), async (req, res) => {
   try {
     const { timeframe } = req.body || {};
     const result = await generateKitchenBriefing({

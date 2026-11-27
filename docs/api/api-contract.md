@@ -591,11 +591,19 @@ POST /api/orders/lookup
 
 A generic error message should be used to avoid exposing whether an order number or phone number exists.
 
+### 9.3 Get Order Detail by Order Number
+
+```http
+GET /api/orders/:orderNumber
+```
+
+Returns order status, snapshot items, taste/ingredient/substitution summaries, and status history for customer tracking. Returns `404 ORDER_NOT_FOUND` if missing.
+
 ---
 
 ## 10. Staff Order Endpoints
 
-These endpoints require staff authentication and authorization.
+These endpoints require an authenticated `STAFF` or `ADMIN` session (`vft_session` HTTP-only cookie or `Authorization: Bearer <jwt>`). Unauthenticated requests return `401 UNAUTHORIZED`; insufficient role returns `403 FORBIDDEN`.
 
 ### 10.1 List Orders
 
@@ -670,9 +678,10 @@ CONFIRMED -> CANCELLED
 
 #### Errors
 
+- `401 UNAUTHORIZED`
+- `403 FORBIDDEN`
 - `404 ORDER_NOT_FOUND`
 - `409 INVALID_STATUS_TRANSITION`
-- `403 STAFF_PERMISSION_REQUIRED`
 
 ---
 
@@ -717,7 +726,7 @@ Recommended MVP limits:
 GET /api/events/orders
 ```
 
-Streams all live order lifecycle events to kitchen staff.
+Requires `STAFF` or `ADMIN` authentication (`401` / `403` otherwise). Streams all live order lifecycle events to kitchen staff.
 
 Headers returned:
 - `Content-Type: text/event-stream`
@@ -740,6 +749,8 @@ Streams real-time status transitions for a specific order to the customer.
 ---
 
 ## 14. Taste Analytics Endpoints
+
+All `/api/analytics/*` endpoints require `STAFF` or `ADMIN` authentication (`vft_session` cookie or `Authorization: Bearer <jwt>`), returning `401 UNAUTHORIZED` or `403 FORBIDDEN` otherwise. Data aggregates from live PostgreSQL orders when reachable and falls back to `demoOrderStore` when offline.
 
 ### 14.1 Analytics Overview
 
@@ -839,7 +850,7 @@ Payload:
 POST /api/ai/kitchen-briefing
 ```
 
-Analyzes current live orders to produce chef operational summaries, palate trends, line-cook directives, and seasoning prep advice.
+Requires `STAFF` or `ADMIN` authentication (`401` / `403` otherwise). Analyzes current live orders to produce chef operational summaries, palate trends, line-cook directives, and seasoning prep advice.
 
 Payload:
 ```json
@@ -847,4 +858,17 @@ Payload:
   "timeframe": "today"
 }
 ```
+
+---
+
+## 16. Authentication & Session Endpoints
+
+Uses signed JWT tokens returned in `data.token` and stored in an HTTP-only sliding session cookie (`vft_session`, 20-minute window).
+
+- `POST /api/auth/register` — Public customer signup (always assigns `CUSTOMER` role).
+- `POST /api/auth/login` — Authenticates against PostgreSQL `users` (with in-memory demo fallback) and issues JWT + `vft_session` cookie.
+- `GET /api/auth/me` — Returns current authenticated user profile (`401 UNAUTHORIZED` if missing/invalid).
+- `POST /api/auth/logout` — Clears `vft_session` cookie.
+- `POST /api/auth/onboard` — Infers and persists nationality taste preferences for the authenticated user.
+- `POST /api/auth/forgot-password` / `POST /api/auth/reset-password` — Password reset token flow.
 

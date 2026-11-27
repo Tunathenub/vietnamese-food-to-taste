@@ -3,13 +3,18 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import { z } from 'zod';
+import '../lib/env.js';
 import { prisma } from '../lib/prisma.js';
 import { validate } from '../middleware/validate.js';
 import { analyzeNationalityTaste } from '../services/ai-service.js';
 import { AppError } from '../middleware/error-handler.js';
 
 const router: Router = Router();
-export const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key-change-in-prod';
+const envJwtSecret = process.env.JWT_SECRET?.trim();
+if (process.env.NODE_ENV === 'production' && !envJwtSecret) {
+  throw new Error('JWT_SECRET must be configured in production.');
+}
+export const JWT_SECRET = envJwtSecret || 'vft-dev-jwt-secret-change-in-production';
 export const SESSION_COOKIE_NAME = 'vft_session';
 export const SESSION_MAX_AGE = 20 * 60 * 1000; // 20 minutes in ms
 
@@ -38,7 +43,7 @@ interface StoredUser {
 const memoryUsers: Map<string, StoredUser> = new Map();
 
 // Initialize Demo Users
-(async function initDemoUsers() {
+const demoUsersReady: Promise<void> = (async function initDemoUsers() {
   const hash = await bcrypt.hash('password123', 10);
   const demoAccounts: StoredUser[] = [
     {
@@ -113,6 +118,42 @@ const memoryUsers: Map<string, StoredUser> = new Map();
       }),
       dietaryRestrictions: JSON.stringify([]),
     },
+    {
+      id: 'usr-quick-customer',
+      name: 'Demo Customer',
+      email: 'customer@demo.com',
+      phone: '+84901112233',
+      passwordHash: hash,
+      role: 'CUSTOMER',
+      nationality: 'Vietnam',
+      tastePreferences: JSON.stringify({
+        spice_level: 2,
+        sweetness: 2,
+        sourness: 2,
+        fish_sauce_intensity: 3,
+        herb_intensity: 4,
+        oil_richness: 2,
+      }),
+      dietaryRestrictions: JSON.stringify([]),
+    },
+    {
+      id: 'usr-quick-staff',
+      name: 'Demo Staff',
+      email: 'staff@demo.com',
+      phone: '+84909998877',
+      passwordHash: hash,
+      role: 'STAFF',
+      nationality: 'Vietnam',
+      tastePreferences: JSON.stringify({
+        spice_level: 2,
+        sweetness: 2,
+        sourness: 2,
+        fish_sauce_intensity: 3,
+        herb_intensity: 3,
+        oil_richness: 2,
+      }),
+      dietaryRestrictions: JSON.stringify([]),
+    },
   ];
 
   for (const acc of demoAccounts) {
@@ -158,6 +199,7 @@ function formatUserResponse(user: StoredUser) {
 }
 
 async function findUserByEmail(email: string): Promise<StoredUser | null> {
+  await demoUsersReady;
   const normalized = email.toLowerCase().trim();
   try {
     const user = await prisma.user.findUnique({ where: { email: normalized } });
@@ -184,6 +226,7 @@ async function findUserByEmail(email: string): Promise<StoredUser | null> {
 }
 
 async function findUserById(id: string): Promise<StoredUser | null> {
+  await demoUsersReady;
   try {
     const user = await prisma.user.findUnique({ where: { id } });
     if (user) {
@@ -261,7 +304,8 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
       }
     }
 
-    const role = (normalizedEmail.includes('staff') || normalizedEmail.includes('admin')) ? 'STAFF' : 'CUSTOMER';
+    // Always assign CUSTOMER role on self-registration (staff/admin accounts are provisioned separately)
+    const role: 'CUSTOMER' = 'CUSTOMER';
 
     let user: StoredUser;
     try {
@@ -333,11 +377,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
-    // Allow 'password123' or 'demo123' as fallback for demo accounts
-    const isDemoBypass = (password === 'password123' || password === 'demo123' || password === 'staff123') &&
-      (normalizedEmail.includes('demo') || normalizedEmail.includes('staff') || normalizedEmail.includes('tourist') || normalizedEmail.includes('user@example.com'));
-
-    if (!isMatch && !isDemoBypass) {
+    if (!isMatch) {
       throw new AppError(401, 'INVALID_CREDENTIALS', 'Email hoặc mật khẩu không chính xác.');
     }
 

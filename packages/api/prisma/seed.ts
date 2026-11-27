@@ -1,3 +1,4 @@
+import '../src/lib/env.js';
 import {
   PrismaClient,
   TasteProfileType,
@@ -999,7 +1000,12 @@ async function main() {
       const existing = await prisma.order.findUnique({
         where: { orderNumber: ord.orderNumber },
       });
-      if (!existing) {
+      if (existing) {
+        await prisma.order.update({
+          where: { id: existing.id },
+          data: { customerPhoneHash: ord.customerPhoneHash },
+        });
+      } else {
         await prisma.order.create({
           data: {
             orderNumber: ord.orderNumber,

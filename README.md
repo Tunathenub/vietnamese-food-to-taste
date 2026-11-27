@@ -30,7 +30,7 @@
   - `/api/events/orders`: Live kitchen feed for restaurant staff.
   - `/api/events/orders/:orderNumber`: Live tracking stream for tourists.
 - **Web Audio API**: Real-time dual-tone notification chime (C6/G6 bell) when orders arrive in the kitchen.
-- Smooth animated status transitions (`PENDING` -> `ACCEPTED` -> `PREPARING` -> `READY` -> `COMPLETED`).
+- Smooth animated status transitions (`PENDING` -> `CONFIRMED` -> `PREPARING` -> `READY` -> `COMPLETED`).
 
 ### 4. 📊 Taste Analytics Intelligence Dashboard (`/staff/analytics`)
 - **Interactive SVG Taste Radar Chart**: Compares authentic Vietnamese baseline vectors with international tourist profiles (US/Europe, Korea, Japan, China, etc.).
@@ -55,17 +55,19 @@
 
 ```text
 ├── packages/
-│   ├── api/                   # Backend REST API + SSE + AI Engine (Node.js, Express, TypeScript)
-│   │   ├── src/routes/        # REST routes (/ai, /analytics, /events, /orders, /dishes, /staff)
-│   │   ├── src/services/      # Business logic (ai-service, order-events, taste-analytics, demo-orders)
-│   │   └── prisma/            # Schema and database definitions
-│   ├── web/                   # Frontend SPA (React 18, Vite, Tailwind CSS, Zustand)
+│   ├── api/                   # Backend REST API + SSE + AI Engine (Node.js, Express, Prisma, TypeScript)
+│   │   ├── prisma/            # PostgreSQL schema, migrations & idempotent seed (dishes, profiles, users, orders)
+│   │   ├── src/lib/           # Prisma client & zero-dep .env auto-loader
+│   │   ├── src/middleware/    # RBAC auth guard (requireAuth/requireRole), Zod validation & error handler
+│   │   ├── src/routes/        # REST routes (/auth, /ai, /analytics, /events, /orders, /dishes, /staff, /taste-profiles)
+│   │   └── src/services/      # Business logic (ai-service, order-events, taste-analytics, demo-orders)
+│   ├── web/                   # Frontend SPA (React 19, Vite, Tailwind CSS, Zustand)
 │   │   ├── src/components/    # Reusable UI (AITasteConcierge, CulturalStory, KitchenBriefing, RadarChart)
 │   │   ├── src/pages/         # Pages (Menu, DishDetail, Cart, Checkout, OrderDetail, Staff, Analytics)
 │   │   └── src/i18n/          # Multilingual dictionary (VI, EN, KO, JA)
 │   └── shared/                # Shared Zod validation schemas & TypeScript types
 ├── scripts/                   # Development, startup & verification automation
-│   └── verify-all.ts          # Comprehensive automated test suite (56 checks)
+│   └── verify-all.ts          # Comprehensive automated test suite (60 checks)
 └── docs/                      # Complete specifications and architectural contracts
 ```
 
@@ -74,8 +76,9 @@
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js >= 18.x
+- Node.js >= 20.x
 - pnpm >= 8.x
+- Docker Desktop (optional — runs PostgreSQL 15; if offline, the API automatically uses in-memory/file fallbacks)
 
 ### 1. Installation
 ```bash
@@ -87,14 +90,25 @@ cd vietnamese-food-to-taste
 pnpm install
 ```
 
-### 2. Environment Setup
-Configure `packages/api/.env`:
+### 2. Environment Setup & PostgreSQL (Optional DB-First Mode)
+Configure `packages/api/.env` (auto-loaded on startup via `src/lib/env.ts`):
 ```env
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vft_dev
 PORT=3000
 NODE_ENV=development
+CORS_ORIGIN=http://localhost:5173
+JWT_SECRET=replace-with-strong-random-hex
+PHONE_SECRET=replace-with-strong-random-hex
 GEMINI_API_KEY=your_gemini_api_key_here
 ```
-*(Note: If `GEMINI_API_KEY` is not provided, the system seamlessly runs in Smart Fallback mode with realistic AI responses!)*
+*(Note: `JWT_SECRET` and `PHONE_SECRET` are required in `NODE_ENV=production`. If `GEMINI_API_KEY` is omitted, the AI suite degrades gracefully to Smart Fallback mode. If PostgreSQL is offline, dishes, profiles, auth, orders, and analytics automatically fall back to resilient local stores.)*
+
+To run with live PostgreSQL:
+```bash
+docker compose up -d
+pnpm --filter @vft/api exec prisma migrate deploy
+pnpm db:seed
+```
 
 ### 3. Run Development Servers
 ```bash
@@ -102,9 +116,13 @@ GEMINI_API_KEY=your_gemini_api_key_here
 pnpm dev
 ```
 - Customer Web App: [http://localhost:5173](http://localhost:5173)
-- Kitchen Portal & KDS: [http://localhost:5173/staff/orders](http://localhost:5173/staff/orders)
-- Taste Analytics Dashboard: [http://localhost:5173/staff/analytics](http://localhost:5173/staff/analytics)
+- Kitchen Portal & KDS: [http://localhost:5173/staff/orders](http://localhost:5173/staff/orders) *(requires `STAFF` / `ADMIN` login)*
+- Taste Analytics Dashboard: [http://localhost:5173/staff/analytics](http://localhost:5173/staff/analytics) *(requires `STAFF` / `ADMIN` login)*
 - Backend API Health: [http://localhost:3000/api/health](http://localhost:3000/api/health)
+
+### 4. Demo Accounts (Password: `password123`)
+- **Customer (1-Click Quick Login):** `customer@demo.com` (also `demo@vietnamesefood.com`, `tourist@example.com`, `user@example.com`)
+- **Kitchen Staff (1-Click Quick Login):** `staff@demo.com` (also `staff@vietnamesefood.com`)
 
 ---
 
@@ -114,13 +132,14 @@ Run the full end-to-end verification script:
 ```bash
 pnpm run verify
 ```
-Verifies **56/56 automated checks (100% PASS)** covering:
+Verifies **60/60 automated checks (100% PASS)** covering:
 - Route resolution & 404 fallbacks
-- Staff RBAC authorization & navbar guard logic
+- Frontend & Backend RBAC authorization (`401` unauthenticated, `403` `CUSTOMER` role, public signup `CUSTOMER`-only hardening)
+- Synced demo quick-login JWT & `vft_session` HTTP-only cookie issuance
 - i18n translations & multi-currency math
 - Real-time SSE broker broadcasting & customer filtering
 - Web Audio API notification execution
-- Taste Analytics Radar Chart & CSV report generation
+- Taste Analytics Radar Chart & authenticated CSV report generation
 - Gemini AI endpoints (`/api/ai/concierge`, `/api/ai/dish-story`, `/api/ai/kitchen-briefing`)
 - AI Concierge 1-click customized cart insertion
 - Offline resilience & graceful degradation

@@ -1,7 +1,9 @@
 import { Router } from 'express';
+import { requireRole } from '../middleware/auth.js';
 import { tasteAnalyticsService } from '../services/taste-analytics.js';
 
 export const analyticsRoutes: Router = Router();
+analyticsRoutes.use(requireRole('STAFF', 'ADMIN'));
 
 // GET /api/analytics/overview
 analyticsRoutes.get('/overview', async (_req, res) => {
