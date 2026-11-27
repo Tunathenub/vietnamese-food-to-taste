@@ -1,6 +1,25 @@
-import { PrismaClient, TasteProfileType, IngredientRole } from '@prisma/client';
+import {
+  PrismaClient,
+  TasteProfileType,
+  IngredientRole,
+  UserRole,
+  OrderStatus,
+  PaymentStatus,
+  PaymentMethod,
+  FulfillmentType,
+} from '@prisma/client';
+import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
 
 const prisma = new PrismaClient();
+
+function hashPhone(phone: string): string {
+  const normalized = phone.replace(/\D/g, '');
+  return crypto
+    .createHmac('sha256', process.env.PHONE_SECRET ?? 'vft_secret')
+    .update(normalized)
+    .digest('hex');
+}
 
 async function main() {
   console.log('Seeding Vietnamese Food to Taste database...');
@@ -93,6 +112,7 @@ async function main() {
     },
   ];
 
+  const profileMap = new Map<string, string>();
   for (const p of profiles) {
     const profile = await prisma.tasteProfile.upsert({
       where: { code: p.code },
@@ -112,6 +132,7 @@ async function main() {
         description: p.description,
       },
     });
+    profileMap.set(p.code, profile.id);
 
     for (const [attrCode, val] of Object.entries(p.defaults)) {
       const attrId = attributeMap.get(attrCode);
@@ -289,27 +310,29 @@ async function main() {
     },
   ];
 
+  const dishMap = new Map<string, { id: string; slug: string; name: string; category: string; basePriceMinor: bigint }>();
   for (const d of dishesData) {
     const dish = await prisma.dish.upsert({
       where: { slug: d.slug },
       update: {
         name: d.name,
         description: d.description,
-        imagePath: d.imageUrl,
+        imagePath: d.imagePath,
         category: d.category,
         basePriceMinor: d.basePrice,
-        prepTimeMinutes: d.preparationTimeMinutes,
+        prepTimeMinutes: d.prepTimeMinutes,
       },
       create: {
         slug: d.slug,
         name: d.name,
         description: d.description,
-        imagePath: d.imageUrl,
+        imagePath: d.imagePath,
         category: d.category,
         basePriceMinor: d.basePrice,
-        prepTimeMinutes: d.preparationTimeMinutes,
+        prepTimeMinutes: d.prepTimeMinutes,
       },
     });
+    dishMap.set(d.slug, dish);
 
     // Taste configs
     for (const tc of d.tasteConfigs) {
@@ -426,6 +449,606 @@ async function main() {
           kitchenInstruction: sub.kitchen,
         },
       });
+    }
+  }
+
+  // ── Demo Users ──
+  const demoPasswordHash = await bcrypt.hash('password123', 10);
+  const demoUsersData = [
+    {
+      email: 'demo@vietnamesefood.com',
+      name: 'Nguyễn Văn Demo',
+      phone: '+84912345678',
+      role: UserRole.CUSTOMER,
+      nationality: 'Vietnam',
+      preferredTasteProfileCode: 'AUTHENTIC_VN',
+      tastePreferences: JSON.stringify({
+        spice_level: 3,
+        sweetness: 2,
+        sourness: 2,
+        fish_sauce_intensity: 3,
+        herb_intensity: 4,
+        oil_richness: 2,
+      }),
+      dietaryRestrictions: JSON.stringify([]),
+    },
+    {
+      email: 'staff@vietnamesefood.com',
+      name: 'Trần Bếp Trưởng',
+      phone: '+84988776655',
+      role: UserRole.STAFF,
+      nationality: 'Vietnam',
+      preferredTasteProfileCode: 'AUTHENTIC_VN',
+      tastePreferences: JSON.stringify({
+        spice_level: 2,
+        sweetness: 2,
+        sourness: 2,
+        fish_sauce_intensity: 3,
+        herb_intensity: 3,
+        oil_richness: 2,
+      }),
+      dietaryRestrictions: JSON.stringify([]),
+    },
+    {
+      email: 'tourist@example.com',
+      name: 'Kim Min-Jun',
+      phone: '+821012345678',
+      role: UserRole.CUSTOMER,
+      nationality: 'South Korea',
+      preferredTasteProfileCode: 'KR_INSPIRED',
+      tastePreferences: JSON.stringify({
+        spice_level: 4,
+        sweetness: 2,
+        sourness: 3,
+        fish_sauce_intensity: 2,
+        herb_intensity: 3,
+        oil_richness: 3,
+      }),
+      dietaryRestrictions: JSON.stringify([]),
+    },
+    {
+      email: 'user@example.com',
+      name: 'Alex Johnson',
+      phone: '+14155552671',
+      role: UserRole.CUSTOMER,
+      nationality: 'United States',
+      preferredTasteProfileCode: 'WESTERN_MILD',
+      tastePreferences: JSON.stringify({
+        spice_level: 1,
+        sweetness: 3,
+        sourness: 2,
+        fish_sauce_intensity: 1,
+        herb_intensity: 2,
+        oil_richness: 2,
+      }),
+      dietaryRestrictions: JSON.stringify([]),
+    },
+    {
+      email: 'customer@demo.com',
+      name: 'Demo Customer',
+      phone: '+84901112233',
+      role: UserRole.CUSTOMER,
+      nationality: 'Vietnam',
+      preferredTasteProfileCode: 'AUTHENTIC_VN',
+      tastePreferences: JSON.stringify({
+        spice_level: 2,
+        sweetness: 2,
+        sourness: 2,
+        fish_sauce_intensity: 3,
+        herb_intensity: 4,
+        oil_richness: 2,
+      }),
+      dietaryRestrictions: JSON.stringify([]),
+    },
+    {
+      email: 'staff@demo.com',
+      name: 'Demo Staff',
+      phone: '+84909998877',
+      role: UserRole.STAFF,
+      nationality: 'Vietnam',
+      preferredTasteProfileCode: 'AUTHENTIC_VN',
+      tastePreferences: JSON.stringify({
+        spice_level: 2,
+        sweetness: 2,
+        sourness: 2,
+        fish_sauce_intensity: 3,
+        herb_intensity: 3,
+        oil_richness: 2,
+      }),
+      dietaryRestrictions: JSON.stringify([]),
+    },
+  ];
+
+  const userMap = new Map<string, string>();
+  for (const u of demoUsersData) {
+    const profileId = profileMap.get(u.preferredTasteProfileCode) ?? null;
+    const record = await prisma.user.upsert({
+      where: { email: u.email },
+      update: {
+        name: u.name,
+        phone: u.phone,
+        passwordHash: demoPasswordHash,
+        role: u.role,
+        nationality: u.nationality,
+        preferredTasteProfileId: profileId,
+        tastePreferences: u.tastePreferences,
+        dietaryRestrictions: u.dietaryRestrictions,
+      },
+      create: {
+        email: u.email,
+        name: u.name,
+        phone: u.phone,
+        passwordHash: demoPasswordHash,
+        role: u.role,
+        nationality: u.nationality,
+        preferredTasteProfileId: profileId,
+        tastePreferences: u.tastePreferences,
+        dietaryRestrictions: u.dietaryRestrictions,
+      },
+    });
+    userMap.set(u.email, record.id);
+  }
+
+  // ── Sample Orders (idempotent by orderNumber) ──
+  const phoBo = dishMap.get('pho-bo');
+  const bunCha = dishMap.get('bun-cha');
+  const banhMi = dishMap.get('banh-mi');
+
+  if (phoBo && bunCha && banhMi) {
+    const sampleOrders = [
+      {
+        orderNumber: 'VFT-SEED-001',
+        idempotencyKey: 'IDEMP-VFT-SEED-001',
+        userId: userMap.get('tourist@example.com') ?? null,
+        status: OrderStatus.PENDING,
+        fulfillmentType: FulfillmentType.DELIVERY,
+        paymentStatus: PaymentStatus.UNPAID,
+        paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
+        customerName: 'Kim Min-Jun',
+        customerEmail: 'tourist@example.com',
+        customerPhoneHash: hashPhone('+821012345678'),
+        customerDialCode: '+82',
+        customerCountryCode: 'KR',
+        preferredContactChannel: 'WHATSAPP',
+        isWhatsAppAvailable: true,
+        hotelOrBuildingName: 'Lotte Hotel Hanoi',
+        roomOrFloorNumber: '1204',
+        deliveryAddress: '54 Liễu Giai, Ba Đình, Hà Nội',
+        customerNotes: 'Cho thêm nhiều ớt tươi, gửi lễ tân nếu chưa nghe máy.',
+        subtotal: BigInt(130000),
+        customizationTotal: BigInt(50000),
+        deliveryFee: BigInt(15000),
+        discountTotal: BigInt(0),
+        total: BigInt(195000),
+        currency: 'VND',
+        items: [
+          {
+            dishId: phoBo.id,
+            dishNameSnapshot: phoBo.name,
+            dishSlugSnapshot: phoBo.slug,
+            dishCategorySnapshot: phoBo.category,
+            quantity: 2,
+            basePriceSnapshot: BigInt(65000),
+            customizationPrice: BigInt(25000),
+            finalUnitPrice: BigInt(90000),
+            lineTotal: BigInt(180000),
+            notes: 'Thêm thịt bò tái và ớt tươi kiểu Hàn Quốc',
+            tasteCustomizations: [
+              {
+                attributeCodeSnapshot: 'spice_level',
+                attributeNameSnapshot: 'Độ cay (Spiciness)',
+                selectedValue: 5,
+                customerLabelSnapshot: 'Cay nhiều',
+                kitchenInstructionSnapshot: 'Extra hot chili paste',
+                priceDeltaSnapshot: BigInt(0),
+              },
+              {
+                attributeCodeSnapshot: 'fish_sauce_intensity',
+                attributeNameSnapshot: 'Vị nước mắm (Fish Sauce)',
+                selectedValue: 2,
+                customerLabelSnapshot: 'Mắm nhẹ',
+                kitchenInstructionSnapshot: 'Half fish sauce portion',
+                priceDeltaSnapshot: BigInt(0),
+              },
+            ],
+            ingredientCustomizations: [
+              {
+                ingredientId: ingredientMap.get('BEEF_SLICES') ?? null,
+                ingredientNameSnapshot: 'Thịt bò tươi',
+                action: 'INCREASED',
+                selectedQuantity: 2,
+                unit: 'phần',
+                priceDeltaSnapshot: BigInt(25000),
+                kitchenInstructionSnapshot: 'INCREASED Thịt bò tươi to 2 phần',
+              },
+              {
+                ingredientId: ingredientMap.get('FRESH_CHILI') ?? null,
+                ingredientNameSnapshot: 'Ớt tươi thái lát',
+                action: 'INCREASED',
+                selectedQuantity: 2,
+                unit: 'phần',
+                priceDeltaSnapshot: BigInt(0),
+                kitchenInstructionSnapshot: 'INCREASED Ớt tươi thái lát to 2 phần',
+              },
+            ],
+            substitutions: [],
+          },
+        ],
+        statusHistory: [
+          {
+            fromStatus: OrderStatus.PENDING,
+            toStatus: OrderStatus.PENDING,
+            actor: 'CUSTOMER',
+            reason: 'Khách hàng đặt đơn trực tuyến',
+          },
+        ],
+      },
+      {
+        orderNumber: 'VFT-SEED-002',
+        idempotencyKey: 'IDEMP-VFT-SEED-002',
+        userId: userMap.get('user@example.com') ?? null,
+        status: OrderStatus.PREPARING,
+        fulfillmentType: FulfillmentType.PICKUP,
+        paymentStatus: PaymentStatus.PAID,
+        paymentMethod: PaymentMethod.MOCK_PAYMENT,
+        customerName: 'Alex Johnson',
+        customerEmail: 'user@example.com',
+        customerPhoneHash: hashPhone('+14155552671'),
+        customerDialCode: '+1',
+        customerCountryCode: 'US',
+        preferredContactChannel: 'PHONE_CALL',
+        isWhatsAppAvailable: false,
+        hotelOrBuildingName: null,
+        roomOrFloorNumber: null,
+        deliveryAddress: null,
+        customerNotes: 'No cilantro please, vegetarian tofu substitution.',
+        subtotal: BigInt(70000),
+        customizationTotal: BigInt(-10000),
+        deliveryFee: BigInt(0),
+        discountTotal: BigInt(0),
+        total: BigInt(60000),
+        currency: 'VND',
+        items: [
+          {
+            dishId: banhMi.id,
+            dishNameSnapshot: banhMi.name,
+            dishSlugSnapshot: banhMi.slug,
+            dishCategorySnapshot: banhMi.category,
+            quantity: 2,
+            basePriceSnapshot: BigInt(35000),
+            customizationPrice: BigInt(-5000),
+            finalUnitPrice: BigInt(30000),
+            lineTotal: BigInt(60000),
+            notes: 'Không cay, bỏ ngò rí, thay thịt bằng đậu phụ',
+            tasteCustomizations: [
+              {
+                attributeCodeSnapshot: 'spice_level',
+                attributeNameSnapshot: 'Độ cay (Spiciness)',
+                selectedValue: 0,
+                customerLabelSnapshot: 'Không cay',
+                kitchenInstructionSnapshot: 'No chili/spicy sauce',
+                priceDeltaSnapshot: BigInt(0),
+              },
+            ],
+            ingredientCustomizations: [
+              {
+                ingredientId: ingredientMap.get('CILANTRO') ?? null,
+                ingredientNameSnapshot: 'Ngò gai & rau mùi',
+                action: 'REMOVED',
+                selectedQuantity: 0,
+                unit: 'phần',
+                priceDeltaSnapshot: BigInt(0),
+                kitchenInstructionSnapshot: 'REMOVED Ngò gai & rau mùi to 0 phần',
+              },
+            ],
+            substitutions: [
+              {
+                originalIngredientId: ingredientMap.get('PORK_BELLY') ?? null,
+                originalIngredientNameSnapshot: 'Thịt heo quay / ba chỉ',
+                substituteIngredientNameSnapshot: 'Đậu phụ chiên',
+                priceDeltaSnapshot: BigInt(-5000),
+                kitchenInstructionSnapshot: 'Thay thịt bằng đậu sốt nấm',
+              },
+            ],
+          },
+        ],
+        statusHistory: [
+          {
+            fromStatus: OrderStatus.PENDING,
+            toStatus: OrderStatus.PENDING,
+            actor: 'CUSTOMER',
+            reason: 'Đặt đơn mang về',
+          },
+          {
+            fromStatus: OrderStatus.PENDING,
+            toStatus: OrderStatus.CONFIRMED,
+            actor: 'STAFF',
+            reason: 'Bếp đã xác nhận đơn',
+          },
+          {
+            fromStatus: OrderStatus.CONFIRMED,
+            toStatus: OrderStatus.PREPARING,
+            actor: 'STAFF',
+            reason: 'Đang nướng bánh và áp chảo đậu phụ',
+          },
+        ],
+      },
+      {
+        orderNumber: 'VFT-SEED-003',
+        idempotencyKey: 'IDEMP-VFT-SEED-003',
+        userId: null,
+        status: OrderStatus.COMPLETED,
+        fulfillmentType: FulfillmentType.DELIVERY,
+        paymentStatus: PaymentStatus.PAID,
+        paymentMethod: PaymentMethod.MOCK_PAYMENT,
+        customerName: 'Kenji Sato',
+        customerEmail: null,
+        customerPhoneHash: hashPhone('+819012345678'),
+        customerDialCode: '+81',
+        customerCountryCode: 'JP',
+        preferredContactChannel: 'WHATSAPP',
+        isWhatsAppAvailable: true,
+        hotelOrBuildingName: 'Daewoo Hotel Hanoi',
+        roomOrFloorNumber: '812',
+        deliveryAddress: '360 Kim Mã, Ba Đình, Hà Nội',
+        customerNotes: 'Vị thanh nhẹ, ít chua ngọt.',
+        subtotal: BigInt(120000),
+        customizationTotal: BigInt(-30000),
+        deliveryFee: BigInt(15000),
+        discountTotal: BigInt(0),
+        total: BigInt(105000),
+        currency: 'VND',
+        items: [
+          {
+            dishId: bunCha.id,
+            dishNameSnapshot: bunCha.name,
+            dishSlugSnapshot: bunCha.slug,
+            dishCategorySnapshot: bunCha.category,
+            quantity: 2,
+            basePriceSnapshot: BigInt(60000),
+            customizationPrice: BigInt(-15000),
+            finalUnitPrice: BigInt(45000),
+            lineTotal: BigInt(90000),
+            notes: 'Nước chấm thanh nhẹ chuẩn vị Nhật, thay chả đậu',
+            tasteCustomizations: [
+              {
+                attributeCodeSnapshot: 'sweetness',
+                attributeNameSnapshot: 'Độ ngọt (Sweetness)',
+                selectedValue: 1,
+                customerLabelSnapshot: 'Ngọt thanh nhẹ',
+                kitchenInstructionSnapshot: 'Light sweet dipping',
+                priceDeltaSnapshot: BigInt(0),
+              },
+              {
+                attributeCodeSnapshot: 'sourness',
+                attributeNameSnapshot: 'Độ chua (Sourness)',
+                selectedValue: 1,
+                customerLabelSnapshot: 'Chua dịu',
+                kitchenInstructionSnapshot: 'Mild sour',
+                priceDeltaSnapshot: BigInt(0),
+              },
+            ],
+            ingredientCustomizations: [
+              {
+                ingredientId: ingredientMap.get('FRESH_CHILI') ?? null,
+                ingredientNameSnapshot: 'Ớt tươi thái lát',
+                action: 'REMOVED',
+                selectedQuantity: 0,
+                unit: 'đĩa',
+                priceDeltaSnapshot: BigInt(0),
+                kitchenInstructionSnapshot: 'REMOVED Ớt tươi thái lát to 0 đĩa',
+              },
+            ],
+            substitutions: [
+              {
+                originalIngredientId: ingredientMap.get('PORK_GRILLED') ?? null,
+                originalIngredientNameSnapshot: 'Thịt nướng chả',
+                substituteIngredientNameSnapshot: 'Đậu phụ chiên',
+                priceDeltaSnapshot: BigInt(-15000),
+                kitchenInstructionSnapshot: 'Thay chả nướng bằng chả đậu chiên sốt thơm',
+              },
+            ],
+          },
+        ],
+        statusHistory: [
+          {
+            fromStatus: OrderStatus.PENDING,
+            toStatus: OrderStatus.PENDING,
+            actor: 'CUSTOMER',
+            reason: 'Khách hàng hoàn tất gửi đơn online',
+          },
+          {
+            fromStatus: OrderStatus.PENDING,
+            toStatus: OrderStatus.CONFIRMED,
+            actor: 'STAFF',
+            reason: 'Bếp đã nhận đơn',
+          },
+          {
+            fromStatus: OrderStatus.CONFIRMED,
+            toStatus: OrderStatus.PREPARING,
+            actor: 'STAFF',
+            reason: 'Đang chế biến chả đậu phụ',
+          },
+          {
+            fromStatus: OrderStatus.PREPARING,
+            toStatus: OrderStatus.READY,
+            actor: 'STAFF',
+            reason: 'Đóng gói hoàn tất',
+          },
+          {
+            fromStatus: OrderStatus.READY,
+            toStatus: OrderStatus.COMPLETED,
+            actor: 'STAFF',
+            reason: 'Đã giao hàng thành công',
+          },
+        ],
+      },
+      {
+        orderNumber: 'VFT-SEED-004',
+        idempotencyKey: 'IDEMP-VFT-SEED-004',
+        userId: userMap.get('demo@vietnamesefood.com') ?? null,
+        status: OrderStatus.READY,
+        fulfillmentType: FulfillmentType.PICKUP,
+        paymentStatus: PaymentStatus.UNPAID,
+        paymentMethod: PaymentMethod.CASH_ON_PICKUP,
+        customerName: 'Nguyễn Văn Demo',
+        customerEmail: 'demo@vietnamesefood.com',
+        customerPhoneHash: hashPhone('+84912345678'),
+        customerDialCode: '+84',
+        customerCountryCode: 'VN',
+        preferredContactChannel: 'PHONE_CALL',
+        isWhatsAppAvailable: false,
+        hotelOrBuildingName: null,
+        roomOrFloorNumber: null,
+        deliveryAddress: null,
+        customerNotes: 'Chuẩn vị truyền thống Hà Nội.',
+        subtotal: BigInt(125000),
+        customizationTotal: BigInt(0),
+        deliveryFee: BigInt(0),
+        discountTotal: BigInt(0),
+        total: BigInt(125000),
+        currency: 'VND',
+        items: [
+          {
+            dishId: phoBo.id,
+            dishNameSnapshot: phoBo.name,
+            dishSlugSnapshot: phoBo.slug,
+            dishCategorySnapshot: phoBo.category,
+            quantity: 1,
+            basePriceSnapshot: BigInt(65000),
+            customizationPrice: BigInt(0),
+            finalUnitPrice: BigInt(65000),
+            lineTotal: BigInt(65000),
+            notes: 'Đầy đủ rau thơm chuẩn vị',
+            tasteCustomizations: [
+              {
+                attributeCodeSnapshot: 'fish_sauce_intensity',
+                attributeNameSnapshot: 'Vị nước mắm (Fish Sauce)',
+                selectedValue: 3,
+                customerLabelSnapshot: 'Chuẩn vị truyền thống',
+                kitchenInstructionSnapshot: 'Standard fish sauce',
+                priceDeltaSnapshot: BigInt(0),
+              },
+              {
+                attributeCodeSnapshot: 'herb_intensity',
+                attributeNameSnapshot: 'Rau thơm (Herbs)',
+                selectedValue: 4,
+                customerLabelSnapshot: 'Đầy đủ rau thơm',
+                kitchenInstructionSnapshot: 'Full herb set',
+                priceDeltaSnapshot: BigInt(0),
+              },
+            ],
+            ingredientCustomizations: [],
+            substitutions: [],
+          },
+          {
+            dishId: bunCha.id,
+            dishNameSnapshot: bunCha.name,
+            dishSlugSnapshot: bunCha.slug,
+            dishCategorySnapshot: bunCha.category,
+            quantity: 1,
+            basePriceSnapshot: BigInt(60000),
+            customizationPrice: BigInt(0),
+            finalUnitPrice: BigInt(60000),
+            lineTotal: BigInt(60000),
+            notes: 'Nước chấm vừa vặn',
+            tasteCustomizations: [
+              {
+                attributeCodeSnapshot: 'sweetness',
+                attributeNameSnapshot: 'Độ ngọt (Sweetness)',
+                selectedValue: 3,
+                customerLabelSnapshot: 'Vừa vặn truyền thống',
+                kitchenInstructionSnapshot: 'Standard sweet dipping',
+                priceDeltaSnapshot: BigInt(0),
+              },
+            ],
+            ingredientCustomizations: [],
+            substitutions: [],
+          },
+        ],
+        statusHistory: [
+          {
+            fromStatus: OrderStatus.PENDING,
+            toStatus: OrderStatus.PENDING,
+            actor: 'CUSTOMER',
+            reason: 'Đặt đơn nhận tại quầy',
+          },
+          {
+            fromStatus: OrderStatus.PENDING,
+            toStatus: OrderStatus.CONFIRMED,
+            actor: 'STAFF',
+            reason: 'Bếp đã xác nhận đơn',
+          },
+          {
+            fromStatus: OrderStatus.CONFIRMED,
+            toStatus: OrderStatus.PREPARING,
+            actor: 'STAFF',
+            reason: 'Đang chuẩn bị món',
+          },
+          {
+            fromStatus: OrderStatus.PREPARING,
+            toStatus: OrderStatus.READY,
+            actor: 'STAFF',
+            reason: 'Món đã hoàn tất sẵn sàng tại quầy',
+          },
+        ],
+      },
+    ];
+
+    for (const ord of sampleOrders) {
+      const existing = await prisma.order.findUnique({
+        where: { orderNumber: ord.orderNumber },
+      });
+      if (!existing) {
+        await prisma.order.create({
+          data: {
+            orderNumber: ord.orderNumber,
+            idempotencyKey: ord.idempotencyKey,
+            userId: ord.userId,
+            status: ord.status,
+            fulfillmentType: ord.fulfillmentType,
+            paymentStatus: ord.paymentStatus,
+            paymentMethod: ord.paymentMethod,
+            customerName: ord.customerName,
+            customerEmail: ord.customerEmail,
+            customerPhoneHash: ord.customerPhoneHash,
+            customerDialCode: ord.customerDialCode,
+            customerCountryCode: ord.customerCountryCode,
+            preferredContactChannel: ord.preferredContactChannel,
+            isWhatsAppAvailable: ord.isWhatsAppAvailable,
+            hotelOrBuildingName: ord.hotelOrBuildingName,
+            roomOrFloorNumber: ord.roomOrFloorNumber,
+            deliveryAddress: ord.deliveryAddress,
+            customerNotes: ord.customerNotes,
+            subtotal: ord.subtotal,
+            customizationTotal: ord.customizationTotal,
+            deliveryFee: ord.deliveryFee,
+            discountTotal: ord.discountTotal,
+            total: ord.total,
+            currency: ord.currency,
+            items: {
+              create: ord.items.map((item) => ({
+                dishId: item.dishId,
+                dishNameSnapshot: item.dishNameSnapshot,
+                dishSlugSnapshot: item.dishSlugSnapshot,
+                dishCategorySnapshot: item.dishCategorySnapshot,
+                quantity: item.quantity,
+                basePriceSnapshot: item.basePriceSnapshot,
+                customizationPrice: item.customizationPrice,
+                finalUnitPrice: item.finalUnitPrice,
+                lineTotal: item.lineTotal,
+                notes: item.notes,
+                tasteCustomizations: { create: item.tasteCustomizations },
+                ingredientCustomizations: { create: item.ingredientCustomizations },
+                substitutions: { create: item.substitutions },
+              })),
+            },
+            statusHistory: {
+              create: ord.statusHistory,
+            },
+          },
+        });
+      }
     }
   }
 

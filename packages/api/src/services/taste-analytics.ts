@@ -1,3 +1,5 @@
+import net from 'node:net';
+import { prisma } from '../lib/prisma.js';
 import { demoOrderStore, type DemoOrderItem } from './demo-orders.js';
 
 export interface DemographicMetric {
@@ -96,12 +98,286 @@ const RADAR_DIMENSION_LABELS: Record<string, string> = {
   oil_richness: 'Độ béo (Oil Richness)',
 };
 
+// ── Normalized Internal Order Types ──
+
+interface NormalizedTasteCustomization {
+  attribute: string;
+  chosenValue: number;
+  customerLabel?: string;
+}
+
+interface NormalizedIngredientCustomization {
+  ingredient: string;
+  action: string;
+  selectedQuantity: number;
+  unit?: string;
+}
+
+interface NormalizedSubstitution {
+  original: string;
+  substitute: string;
+  kitchenInstruction?: string;
+}
+
+interface NormalizedOrderItem {
+  dishName: string;
+  quantity: number;
+  specialNotes?: string;
+  tasteCustomizations: NormalizedTasteCustomization[];
+  ingredientCustomizations: NormalizedIngredientCustomization[];
+  substitutions: NormalizedSubstitution[];
+}
+
+interface NormalizedAnalyticsOrder {
+  total: number;
+  customerCountryCode?: string | null;
+  items: NormalizedOrderItem[];
+}
+
+// ── Database Reachability & Timeout Helpers ──
+
+let dbHealthyCache: { isHealthy: boolean; timestamp: number } | null = null;
+const CACHE_TTL_MS = 5000;
+const DB_QUERY_TIMEOUT_MS = 800;
+
+function checkDatabaseReachability(): Promise<boolean> {
+  const now = Date.now();
+  if (dbHealthyCache && now - dbHealthyCache.timestamp < CACHE_TTL_MS) {
+    return Promise.resolve(dbHealthyCache.isHealthy);
+  }
+
+  return new Promise((resolve) => {
+    let host = '127.0.0.1';
+    let port = 5432;
+    try {
+      if (process.env.DATABASE_URL) {
+        const parsed = new URL(process.env.DATABASE_URL);
+        host = parsed.hostname === 'localhost' ? '127.0.0.1' : (parsed.hostname || '127.0.0.1');
+        port = parsed.port ? parseInt(parsed.port, 10) : 5432;
+      }
+    } catch {
+      // Fallback to default localhost:5432
+    }
+
+    const socket = net.createConnection({ host, port, timeout: 80 });
+    let resolved = false;
+
+    const done = (isHealthy: boolean) => {
+      if (!resolved) {
+        resolved = true;
+        socket.destroy();
+        dbHealthyCache = { isHealthy, timestamp: Date.now() };
+        resolve(isHealthy);
+      }
+    };
+
+    socket.once('connect', () => done(true));
+    socket.once('error', () => done(false));
+    socket.once('timeout', () => done(false));
+  });
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs = DB_QUERY_TIMEOUT_MS): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Database query timed out after ${timeoutMs}ms`)), timeoutMs)
+    ),
+  ]);
+}
+
+function mapDemoOrders(orders: DemoOrderItem[]): NormalizedAnalyticsOrder[] {
+  return orders.map((ord) => ({
+    total: Number(ord.total) || 0,
+    customerCountryCode: ord.customerCountryCode,
+    items: (ord.items || []).map((item) => ({
+      dishName: item.dishName,
+      quantity: item.quantity || 1,
+      specialNotes: item.specialNotes || item.notes || undefined,
+      tasteCustomizations: (item.tasteCustomizations || []).map((tc: any) => ({
+        attribute: String(tc.attribute || tc.attributeCode || ''),
+        chosenValue: Number(tc.chosenValue ?? tc.selectedValue),
+        customerLabel: tc.customerLabel,
+      })),
+      ingredientCustomizations: (item.ingredientCustomizations || []).map((ic: any) => ({
+        ingredient: String(ic.ingredient || ic.ingredientName || ''),
+        action: String(ic.action || ''),
+        selectedQuantity: Number(ic.selectedQuantity ?? ic.chosenQuantity ?? 1),
+        unit: ic.unit,
+      })),
+      substitutions: (item.substitutions || []).map((sub: any) => ({
+        original: String(sub.original || sub.originalIngredient || ''),
+        substitute: String(sub.substitute || sub.substituteIngredient || ''),
+        kitchenInstruction: sub.kitchenInstruction || sub.reason,
+      })),
+    })),
+  }));
+}
+
+async function loadNormalizedOrders(): Promise<NormalizedAnalyticsOrder[]> {
+  const isHealthy = await checkDatabaseReachability();
+  if (!isHealthy) {
+    return mapDemoOrders(demoOrderStore.getAll());
+  }
+
+  try {
+    const dbOrders = await withTimeout(
+      prisma.order.findMany({
+        include: {
+          items: {
+            include: {
+              tasteCustomizations: true,
+              ingredientCustomizations: true,
+              substitutions: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      DB_QUERY_TIMEOUT_MS
+    );
+
+    if (dbOrders.length === 0) {
+      return mapDemoOrders(demoOrderStore.getAll());
+    }
+
+    return dbOrders.map((ord) => ({
+      total: Number(ord.total),
+      customerCountryCode: ord.customerCountryCode,
+      items: ord.items.map((item) => ({
+        dishName: item.dishNameSnapshot,
+        quantity: item.quantity,
+        specialNotes: item.notes ?? undefined,
+        tasteCustomizations: item.tasteCustomizations.map((tc) => ({
+          attribute: tc.attributeCodeSnapshot,
+          chosenValue: tc.selectedValue,
+          customerLabel: tc.customerLabelSnapshot,
+        })),
+        ingredientCustomizations: item.ingredientCustomizations.map((ic) => ({
+          ingredient: ic.ingredientNameSnapshot,
+          action: ic.action,
+          selectedQuantity: Number(ic.selectedQuantity),
+          unit: ic.unit,
+        })),
+        substitutions: item.substitutions.map((sub) => ({
+          original: sub.originalIngredientNameSnapshot,
+          substitute: sub.substituteIngredientNameSnapshot,
+          kitchenInstruction: sub.kitchenInstructionSnapshot,
+        })),
+      })),
+    }));
+  } catch (err) {
+    dbHealthyCache = { isHealthy: false, timestamp: Date.now() };
+    console.warn('[taste-analytics] Falling back to demoOrderStore:', (err as Error)?.message || err);
+    return mapDemoOrders(demoOrderStore.getAll());
+  }
+}
+
+function resolveTasteAttributeKey(rawAttr: string): string | null {
+  if (!rawAttr) return null;
+  if (AUTHENTIC_VN_RADAR[rawAttr] !== undefined) return rawAttr;
+
+  const lower = rawAttr.toLowerCase();
+  if (lower.includes('cay') || lower.includes('spice')) return 'spice_level';
+  if (lower.includes('ngọt') || lower.includes('sweet')) return 'sweetness';
+  if (lower.includes('chua') || lower.includes('sour')) return 'sourness';
+  if (lower.includes('mắm') || lower.includes('mặn') || lower.includes('fish_sauce')) return 'fish_sauce_intensity';
+  if (lower.includes('rau') || lower.includes('herb')) return 'herb_intensity';
+  if (lower.includes('béo') || lower.includes('dầu') || lower.includes('oil')) return 'oil_richness';
+  return null;
+}
+
+const BASELINE_INGREDIENT_METRICS: IngredientAdjustmentMetric[] = [
+  {
+    ingredient: 'Rau mùi (Ngò rí)',
+    category: 'HERB',
+    omissionRate: 78.4,
+    boostRate: 4.2,
+    totalRequests: 48,
+    primaryTourist: 'Mỹ & Tây Âu 🇺🇸',
+    kitchenRecommendation: 'Bày đĩa riêng hoặc hỏi khách trước khi rắc lên tô.',
+  },
+  {
+    ingredient: 'Ớt tươi băm & Sa tế',
+    category: 'SPICE',
+    omissionRate: 14.0,
+    boostRate: 58.2,
+    totalRequests: 62,
+    primaryTourist: 'Hàn Quốc 🇰🇷',
+    kitchenRecommendation: 'Chuẩn bị thêm chén sa tế tỏi ớt riêng đi kèm bún chả.',
+  },
+  {
+    ingredient: 'Nước mắm nguyên chất',
+    category: 'SAUCE',
+    omissionRate: 46.8,
+    boostRate: 8.5,
+    totalRequests: 36,
+    primaryTourist: 'Nhật Bản 🇯🇵',
+    kitchenRecommendation: 'Giảm 30% nước cốt mắm, tăng nước dùng thanh mát.',
+  },
+  {
+    ingredient: 'Hành hoa (Hành lá) chần',
+    category: 'HERB',
+    omissionRate: 31.5,
+    boostRate: 12.0,
+    totalRequests: 27,
+    primaryTourist: 'Tây Âu 🇺🇸',
+    kitchenRecommendation: 'Nhiều khách không ăn được hành sống, chần thật kỹ.',
+  },
+  {
+    ingredient: 'Tỏi phi giòn & Giấm tỏi',
+    category: 'TOPPING',
+    omissionRate: 8.2,
+    boostRate: 38.0,
+    totalRequests: 29,
+    primaryTourist: 'Singapore 🇸🇬',
+    kitchenRecommendation: 'Để hũ giấm tỏi ớt sẵn trên bàn để khách tự thêm.',
+  },
+];
+
+const BASELINE_SUBSTITUTION_METRICS: SubstitutionMetric[] = [
+  {
+    original: 'Thịt ba chỉ nướng than hoa',
+    substitute: 'Đậu phụ nấm chiên giòn áp chảo',
+    count: 18,
+    trend: 'UP',
+    dietType: 'Thuần chay / Halal',
+    note: 'Được lựa chọn nhiều nhất bởi khách ăn chay hoặc kiêng thịt lợn.',
+  },
+  {
+    original: 'Bún gạo tươi truyền thống',
+    substitute: 'Bún nưa Shirataki ít calo',
+    count: 9,
+    trend: 'UP',
+    dietType: 'Low-Carb / Keto',
+    note: 'Khách du lịch quốc tế theo chế độ ăn kiêng tinh bột.',
+  },
+  {
+    original: 'Nước mắm cá cơm',
+    substitute: 'Nước tương đậu nành nấm hương',
+    count: 12,
+    trend: 'STABLE',
+    dietType: 'Dị ứng hải sản',
+    note: 'Dành cho khách nhạy cảm với hải sản lên men.',
+  },
+];
+
+function matchBaselineIngredientIndex(name: string): number {
+  const lower = name.toLowerCase();
+  if (lower.includes('ngò') || lower.includes('rau mùi') || lower.includes('cilantro')) return 0;
+  if (lower.includes('ớt') || lower.includes('sa tế') || lower.includes('chili')) return 1;
+  if (lower.includes('nước mắm') || lower.includes('fish sauce')) return 2;
+  if (lower.includes('hành') || lower.includes('scallion')) return 3;
+  if (lower.includes('tỏi') || lower.includes('garlic')) return 4;
+  return -1;
+}
+
 export const tasteAnalyticsService = {
   /**
    * Retrieves high-level analytics overview across all orders
    */
-  getOverview(): AnalyticsOverview {
-    const orders = demoOrderStore.getAll();
+  async getOverview(): Promise<AnalyticsOverview> {
+    const orders = await loadNormalizedOrders();
     const totalOrders = orders.length;
 
     let customizedOrders = 0;
@@ -111,7 +387,7 @@ export const tasteAnalyticsService = {
 
     for (const ord of orders) {
       totalRevenue += ord.total;
-      const cc = ord.customerCountryCode || 'VN';
+      const cc = (ord.customerCountryCode || 'VN').toUpperCase();
       if (!countryCounts[cc]) {
         countryCounts[cc] = { count: 0, totalRev: 0 };
       }
@@ -119,14 +395,16 @@ export const tasteAnalyticsService = {
       countryCounts[cc].totalRev += ord.total;
 
       let isCustomized = false;
-      for (const item of ord.items || []) {
+      for (const item of ord.items) {
         const dish = item.dishName;
         dishCounts[dish] = (dishCounts[dish] || 0) + (item.quantity || 1);
 
-        if ((item.tasteCustomizations && item.tasteCustomizations.length > 0) ||
-            (item.ingredientCustomizations && item.ingredientCustomizations.length > 0) ||
-            (item.substitutions && item.substitutions.length > 0) ||
-            (item.specialNotes && item.specialNotes.trim())) {
+        if (
+          item.tasteCustomizations.length > 0 ||
+          item.ingredientCustomizations.length > 0 ||
+          item.substitutions.length > 0 ||
+          (item.specialNotes && item.specialNotes.trim())
+        ) {
           isCustomized = true;
         }
       }
@@ -200,12 +478,12 @@ export const tasteAnalyticsService = {
   /**
    * Computes 6-dimensional taste radar data comparing Authentic VN vs selected country
    */
-  getTasteRadar(countryCode: string = 'ALL'): TasteRadarData {
-    const orders = demoOrderStore.getAll();
+  async getTasteRadar(countryCode: string = 'ALL'): Promise<TasteRadarData> {
+    const orders = await loadNormalizedOrders();
     const normCode = countryCode.toUpperCase();
 
     // Default tourist vector based on country preset or fallback
-    const targetAverages = { ... (COUNTRY_PRESET_RADAR[normCode] || COUNTRY_PRESET_RADAR.KR) };
+    const targetAverages = { ...(COUNTRY_PRESET_RADAR[normCode] || COUNTRY_PRESET_RADAR.KR) };
 
     // If 'ALL', compute weighted average of tourist profiles
     if (normCode === 'ALL') {
@@ -223,7 +501,7 @@ export const tasteAnalyticsService = {
       }
     }
 
-    // Blend with actual real user orders if present in demo store
+    // Blend with actual orders when present
     const relevantOrders = normCode === 'ALL'
       ? orders
       : orders.filter((o) => (o.customerCountryCode || '').toUpperCase() === normCode);
@@ -232,13 +510,13 @@ export const tasteAnalyticsService = {
     const tasteCounts: Record<string, number> = {};
 
     for (const ord of relevantOrders) {
-      for (const item of ord.items || []) {
-        for (const tc of item.tasteCustomizations || []) {
-          const attr = tc.attribute;
+      for (const item of ord.items) {
+        for (const tc of item.tasteCustomizations) {
+          const attrKey = resolveTasteAttributeKey(tc.attribute);
           const val = Number(tc.chosenValue);
-          if (attr && !isNaN(val)) {
-            tasteSums[attr] = (tasteSums[attr] || 0) + val;
-            tasteCounts[attr] = (tasteCounts[attr] || 0) + 1;
+          if (attrKey && !isNaN(val)) {
+            tasteSums[attrKey] = (tasteSums[attrKey] || 0) + val;
+            tasteCounts[attrKey] = (tasteCounts[attrKey] || 0) + 1;
           }
         }
       }
@@ -294,95 +572,112 @@ export const tasteAnalyticsService = {
   /**
    * Retrieves ingredient omission & boost metrics
    */
-  getIngredientMetrics(): IngredientAdjustmentMetric[] {
-    return [
-      {
-        ingredient: 'Rau mùi (Ngò rí)',
+  async getIngredientMetrics(): Promise<IngredientAdjustmentMetric[]> {
+    const orders = await loadNormalizedOrders();
+    const metrics = BASELINE_INGREDIENT_METRICS.map((m) => ({ ...m }));
+    const extraStats = new Map<string, { omissions: number; boosts: number; total: number; topCountry: string }>();
+
+    for (const ord of orders) {
+      const cc = (ord.customerCountryCode || 'VN').toUpperCase();
+      for (const item of ord.items) {
+        for (const ic of item.ingredientCustomizations) {
+          const action = ic.action.toUpperCase();
+          if (action === 'UNCHANGED') continue;
+          const isOmission = action === 'REMOVED' || action === 'REMOVE' || action === 'DECREASED' || ic.selectedQuantity === 0;
+          const isBoost = action === 'INCREASED' || action === 'ADDED' || ic.selectedQuantity > 1;
+          if (!isOmission && !isBoost) continue;
+
+          const baseIdx = matchBaselineIngredientIndex(ic.ingredient);
+          if (baseIdx >= 0) {
+            const target = metrics[baseIdx];
+            const prevTotal = target.totalRequests;
+            const prevOmitCount = (target.omissionRate / 100) * prevTotal;
+            const prevBoostCount = (target.boostRate / 100) * prevTotal;
+            const newTotal = prevTotal + 1;
+            target.totalRequests = newTotal;
+            target.omissionRate = Math.round(((prevOmitCount + (isOmission ? 1 : 0)) / newTotal) * 1000) / 10;
+            target.boostRate = Math.round(((prevBoostCount + (isBoost ? 1 : 0)) / newTotal) * 1000) / 10;
+          } else {
+            const existing = extraStats.get(ic.ingredient) || { omissions: 0, boosts: 0, total: 0, topCountry: cc };
+            existing.total += 1;
+            if (isOmission) existing.omissions += 1;
+            if (isBoost) existing.boosts += 1;
+            extraStats.set(ic.ingredient, existing);
+          }
+        }
+      }
+    }
+
+    for (const [ingredient, stats] of extraStats.entries()) {
+      const meta = COUNTRY_NAMES[stats.topCountry] || { name: stats.topCountry, flag: '🌐' };
+      metrics.push({
+        ingredient,
         category: 'HERB',
-        omissionRate: 78.4,
-        boostRate: 4.2,
-        totalRequests: 48,
-        primaryTourist: 'Mỹ & Tây Âu 🇺🇸',
-        kitchenRecommendation: 'Bày đĩa riêng hoặc hỏi khách trước khi rắc lên tô.',
-      },
-      {
-        ingredient: 'Ớt tươi băm & Sa tế',
-        category: 'SPICE',
-        omissionRate: 14.0,
-        boostRate: 58.2,
-        totalRequests: 62,
-        primaryTourist: 'Hàn Quốc 🇰🇷',
-        kitchenRecommendation: 'Chuẩn bị thêm chén sa tế tỏi ớt riêng đi kèm bún chả.',
-      },
-      {
-        ingredient: 'Nước mắm nguyên chất',
-        category: 'SAUCE',
-        omissionRate: 46.8,
-        boostRate: 8.5,
-        totalRequests: 36,
-        primaryTourist: 'Nhật Bản 🇯🇵',
-        kitchenRecommendation: 'Giảm 30% nước cốt mắm, tăng nước dùng thanh mát.',
-      },
-      {
-        ingredient: 'Hành hoa (Hành lá) chần',
-        category: 'HERB',
-        omissionRate: 31.5,
-        boostRate: 12.0,
-        totalRequests: 27,
-        primaryTourist: 'Tây Âu 🇺🇸',
-        kitchenRecommendation: 'Nhiều khách không ăn được hành sống, chần thật kỹ.',
-      },
-      {
-        ingredient: 'Tỏi phi giòn & Giấm tỏi',
-        category: 'TOPPING',
-        omissionRate: 8.2,
-        boostRate: 38.0,
-        totalRequests: 29,
-        primaryTourist: 'Singapore 🇸🇬',
-        kitchenRecommendation: 'Để hũ giấm tỏi ớt sẵn trên bàn để khách tự thêm.',
-      },
-    ];
+        omissionRate: Math.round((stats.omissions / stats.total) * 1000) / 10,
+        boostRate: Math.round((stats.boosts / stats.total) * 1000) / 10,
+        totalRequests: stats.total,
+        primaryTourist: `${meta.name} ${meta.flag}`,
+        kitchenRecommendation: 'Theo dõi tần suất tùy chỉnh thực tế từ đơn hàng.',
+      });
+    }
+
+    return metrics;
   },
 
   /**
    * Retrieves common substitution pairs requested by tourists
    */
-  getSubstitutionMetrics(): SubstitutionMetric[] {
-    return [
-      {
-        original: 'Thịt ba chỉ nướng than hoa',
-        substitute: 'Đậu phụ nấm chiên giòn áp chảo',
-        count: 18,
-        trend: 'UP',
-        dietType: 'Thuần chay / Halal',
-        note: 'Được lựa chọn nhiều nhất bởi khách ăn chay hoặc kiêng thịt lợn.',
-      },
-      {
-        original: 'Bún gạo tươi truyền thống',
-        substitute: 'Bún nưa Shirataki ít calo',
-        count: 9,
-        trend: 'UP',
-        dietType: 'Low-Carb / Keto',
-        note: 'Khách du lịch quốc tế theo chế độ ăn kiêng tinh bột.',
-      },
-      {
-        original: 'Nước mắm cá cơm',
-        substitute: 'Nước tương đậu nành nấm hương',
-        count: 12,
-        trend: 'STABLE',
-        dietType: 'Dị ứng hải sản',
-        note: 'Dành cho khách nhạy cảm với hải sản lên men.',
-      },
-    ];
+  async getSubstitutionMetrics(): Promise<SubstitutionMetric[]> {
+    const orders = await loadNormalizedOrders();
+    const metrics = BASELINE_SUBSTITUTION_METRICS.map((m) => ({ ...m }));
+    const livePairs = new Map<string, SubstitutionMetric>();
+
+    for (const ord of orders) {
+      for (const item of ord.items) {
+        for (const sub of item.substitutions) {
+          if (!sub.original && !sub.substitute) continue;
+          const subLower = sub.substitute.toLowerCase();
+          const origLower = sub.original.toLowerCase();
+
+          // Match baseline tofu/pork or soy/fish sauce when applicable
+          if ((origLower.includes('ba chỉ') || origLower.includes('chả')) && subLower.includes('đậu')) {
+            metrics[0].count += 1;
+          } else if (origLower.includes('bún') && subLower.includes('shirataki')) {
+            metrics[1].count += 1;
+          } else if (origLower.includes('mắm') && subLower.includes('tương')) {
+            metrics[2].count += 1;
+          } else {
+            const key = `${sub.original}__${sub.substitute}`;
+            const existing = livePairs.get(key);
+            if (existing) {
+              existing.count += 1;
+            } else {
+              livePairs.set(key, {
+                original: sub.original || 'Nguyên bản',
+                substitute: sub.substitute,
+                count: 1,
+                trend: 'UP',
+                dietType: subLower.includes('đậu') || subLower.includes('tofu') ? 'Thuần chay / Halal' : 'Tùy chọn khẩu vị',
+                note: sub.kitchenInstruction || 'Yêu cầu thay thế nguyên liệu ghi nhận từ đơn hàng.',
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return [...Array.from(livePairs.values()), ...metrics];
   },
 
   /**
    * Generates a downloadable CSV report string
    */
-  generateCsvExport(): string {
-    const overview = this.getOverview();
-    const radar = this.getTasteRadar('ALL');
-    const ingredients = this.getIngredientMetrics();
+  async generateCsvExport(): Promise<string> {
+    const [overview, radar, ingredients] = await Promise.all([
+      this.getOverview(),
+      this.getTasteRadar('ALL'),
+      this.getIngredientMetrics(),
+    ]);
 
     let csv = '\uFEFF'; // UTF-8 BOM for Excel
     csv += '=== VIETNAMESE FOOD TO TASTE - TASTE ANALYTICS REPORT ===\n';
