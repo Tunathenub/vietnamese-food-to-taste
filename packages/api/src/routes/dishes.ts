@@ -349,7 +349,7 @@ const FALLBACK_DISHES: FallbackDish[] = [
 let dbHealthyCache: { isHealthy: boolean; timestamp: number } | null = null;
 const CACHE_TTL_MS = 5000;
 
-function checkDatabaseReachability(): Promise<boolean> {
+export function checkDatabaseReachability(): Promise<boolean> {
   const now = Date.now();
   if (dbHealthyCache && now - dbHealthyCache.timestamp < CACHE_TTL_MS) {
     return Promise.resolve(dbHealthyCache.isHealthy);
@@ -384,7 +384,7 @@ function checkDatabaseReachability(): Promise<boolean> {
   });
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs = 800): Promise<T> {
+export function withTimeout<T>(promise: Promise<T>, timeoutMs = 800): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) =>
@@ -393,7 +393,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs = 800): Promise<T> {
   ]);
 }
 
-async function queryWithFallback<T>(
+export async function queryWithFallback<T>(
   dbQueryFn: () => Promise<T>,
   fallbackFn: () => T | Promise<T>
 ): Promise<T> {
@@ -409,6 +409,31 @@ async function queryWithFallback<T>(
     return fallbackFn();
   }
 }
+
+export function normalizeDishSlug(dishIdOrSlug: string): string {
+  const lower = dishIdOrSlug.trim().toLowerCase();
+  if (lower.endsWith('-veg-id')) return lower.slice(0, -'-veg-id'.length);
+  if (lower.endsWith('-uuid')) return lower.slice(0, -'-uuid'.length);
+  if (lower.endsWith('-id')) return lower.slice(0, -'-id'.length);
+  return lower;
+}
+
+const FALLBACK_INGREDIENT_CODE_MAP: Record<string, string> = {
+  'ing-beef': 'BEEF_SLICES',
+  'di-pho-beef': 'BEEF_SLICES',
+  'ing-pork': 'PORK_GRILLED',
+  'di-bc-pork': 'PORK_GRILLED',
+  'ing-pork-belly': 'PORK_BELLY',
+  'di-bm-pork': 'PORK_BELLY',
+  'ing-tofu': 'TOFU',
+  'ing-chili': 'FRESH_CHILI',
+  'di-pho-chili': 'FRESH_CHILI',
+  'di-bc-chili': 'FRESH_CHILI',
+  'ing-basil': 'THAI_BASIL',
+  'di-pho-basil': 'THAI_BASIL',
+  'ing-cilantro': 'CILANTRO',
+  'di-bm-cilantro': 'CILANTRO',
+};
 
 function findFallbackDish(dishIdOrSlug: string): FallbackDish | undefined {
   const norm = dishIdOrSlug.toLowerCase().trim();
@@ -612,7 +637,12 @@ function validateFallbackCustomization(
   }
 
   for (const subId of substitutionIds) {
-    const sub = dish.substitutions.find((s) => s.id === subId);
+    const lowerSubId = String(subId).toLowerCase();
+    const sub = dish.substitutions.find(
+      (s) =>
+        s.id === subId ||
+        (lowerSubId.includes('tofu') && s.substituteIngredientId === 'ing-tofu')
+    );
     if (!sub) {
       return {
         status: 422,
@@ -698,6 +728,19 @@ dishRoutes.get('/', async (req, res, next) => {
             }),
           ]);
 
+          if (dishes.length === 0) {
+            const hasFilter = Boolean(search) || Boolean(category && category !== 'ALL');
+            const tableEmpty =
+              !hasFilter ||
+              (await prisma.dish.count({ where: { deletedAt: null, isAvailable: true } })) === 0;
+            if (tableEmpty) {
+              return {
+                data: getFallbackDishesResponse(page, pageSize, search, category),
+                error: null,
+              };
+            }
+          }
+
           const items = dishes.map((d) => ({
             id: d.id,
             slug: d.slug,
@@ -744,12 +787,13 @@ dishRoutes.get('/', async (req, res, next) => {
 dishRoutes.get('/:dishIdOrSlug', async (req, res, next) => {
   try {
     const dishIdOrSlug = req.params.dishIdOrSlug || (req.params as any).id;
+    const normalizedSlug = normalizeDishSlug(dishIdOrSlug);
 
     const response = await queryWithFallback(
       async () => {
         const dish = await prisma.dish.findFirst({
           where: {
-            OR: [{ id: dishIdOrSlug }, { slug: dishIdOrSlug }],
+            OR: [{ id: dishIdOrSlug }, { slug: dishIdOrSlug }, { slug: normalizedSlug }],
             deletedAt: null,
           },
           include: {
@@ -875,18 +919,19 @@ dishRoutes.get('/:dishIdOrSlug', async (req, res, next) => {
   }
 });
 
-// ── POST /api/dishes/:dishId/recommendation ──
+// ── POST /api/dishes/:dishId/recommendation & /recommend-taste ──
 
-dishRoutes.post('/:dishId/recommendation', async (req, res, next) => {
+dishRoutes.post(['/:dishId/recommendation', '/:dishId/recommend-taste'], async (req, res, next) => {
   try {
-    const { dishId } = req.params;
+    const dishId = String(req.params.dishId);
+    const normalizedSlug = normalizeDishSlug(dishId);
     const { tasteProfileCode, personalPreferences = {} } = req.body ?? {};
 
     const response = await queryWithFallback(
       async () => {
         const dish = await prisma.dish.findFirst({
           where: {
-            OR: [{ id: dishId }, { slug: dishId }],
+            OR: [{ id: dishId }, { slug: dishId }, { slug: normalizedSlug }],
             deletedAt: null,
           },
           include: {
@@ -922,14 +967,20 @@ dishRoutes.post('/:dishId/recommendation', async (req, res, next) => {
           });
 
           if (!profile) {
-            return {
-              status: 404,
-              body: { data: null, error: { code: 'TASTE_PROFILE_NOT_FOUND', message: 'Taste profile not found.' } },
-            };
-          }
-
-          for (const d of profile.defaults) {
-            profileDefaults[d.attribute.code] = d.defaultValue;
+            const presetFallback = PRESET_PROFILE_DEFAULTS[tasteProfileCode];
+            const profileCount = presetFallback ? await prisma.tasteProfile.count({ where: { isActive: true } }) : -1;
+            if (presetFallback && profileCount === 0) {
+              profileDefaults = presetFallback;
+            } else {
+              return {
+                status: 404,
+                body: { data: null, error: { code: 'TASTE_PROFILE_NOT_FOUND', message: 'Taste profile not found.' } },
+              };
+            }
+          } else {
+            for (const d of profile.defaults) {
+              profileDefaults[d.attribute.code] = d.defaultValue;
+            }
           }
         }
 
@@ -1009,6 +1060,7 @@ dishRoutes.post('/:dishId/recommendation', async (req, res, next) => {
 dishRoutes.post('/:dishId/validate-customization', async (req, res, next) => {
   try {
     const { dishId } = req.params;
+    const normalizedSlug = normalizeDishSlug(dishId);
     const {
       tasteValues = {},
       ingredientQuantities = {},
@@ -1020,7 +1072,7 @@ dishRoutes.post('/:dishId/validate-customization', async (req, res, next) => {
       async () => {
         const dish = await prisma.dish.findFirst({
           where: {
-            OR: [{ id: dishId }, { slug: dishId }],
+            OR: [{ id: dishId }, { slug: dishId }, { slug: normalizedSlug }],
             deletedAt: null,
           },
           include: {
@@ -1032,6 +1084,7 @@ dishRoutes.post('/:dishId/validate-customization', async (req, res, next) => {
             },
             substitutions: {
               where: { isAvailable: true },
+              include: { substituteIngredient: true },
             },
           },
         });
@@ -1089,7 +1142,14 @@ dishRoutes.post('/:dishId/validate-customization', async (req, res, next) => {
         // Validate ingredient quantities
         for (const [ingId, qty] of Object.entries(ingredientQuantities)) {
           const numQty = Number(qty);
-          const di = dish.ingredients.find((i) => i.ingredientId === ingId || i.ingredient.code === ingId);
+          const mappedCode = FALLBACK_INGREDIENT_CODE_MAP[ingId.toLowerCase()];
+          const di = dish.ingredients.find(
+            (i) =>
+              i.id === ingId ||
+              i.ingredientId === ingId ||
+              i.ingredient.code === ingId ||
+              (mappedCode && i.ingredient.code === mappedCode)
+          );
           if (!di) {
             return {
               status: 422,
@@ -1128,7 +1188,13 @@ dishRoutes.post('/:dishId/validate-customization', async (req, res, next) => {
 
         // Validate substitutions
         for (const subId of substitutionIds) {
-          const sub = dish.substitutions.find((s) => s.id === subId);
+          const lowerSubId = String(subId).toLowerCase();
+          const sub = dish.substitutions.find((s) => {
+            if (s.id === subId) return true;
+            if (lowerSubId.includes('tofu') && s.substituteIngredient?.code === 'TOFU') return true;
+            if (s.substituteIngredient?.code?.toLowerCase() === lowerSubId) return true;
+            return false;
+          });
           if (!sub) {
             return {
               status: 422,

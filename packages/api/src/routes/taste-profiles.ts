@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import type { ApiResponse, TasteProfileDetail } from '@vft/shared';
+import { queryWithFallback } from './dishes.js';
 
 export const tasteProfileRoutes: Router = Router();
 
@@ -76,109 +77,133 @@ const FALLBACK_TASTE_PROFILES: TasteProfileDetail[] = [
 ];
 
 // GET /api/taste-profiles
-tasteProfileRoutes.get('/', async (_req, res) => {
+tasteProfileRoutes.get('/', async (_req, res, next) => {
   try {
-    const profiles = await prisma.tasteProfile.findMany({
-      where: { isActive: true },
-      include: {
-        defaults: {
+    const body: ApiResponse<{ items: TasteProfileDetail[] }> = await queryWithFallback(
+      async () => {
+        const profiles = await prisma.tasteProfile.findMany({
+          where: { isActive: true },
           include: {
-            attribute: true,
+            defaults: {
+              include: {
+                attribute: true,
+              },
+            },
           },
-        },
+          orderBy: { code: 'asc' },
+        });
+
+        if (profiles.length === 0) {
+          return {
+            data: { items: FALLBACK_TASTE_PROFILES },
+            error: null,
+          };
+        }
+
+        const items: TasteProfileDetail[] = profiles.map((p) => {
+          const attributes: Record<string, number> = {};
+          for (const d of p.defaults) {
+            attributes[d.attribute.code] = d.defaultValue;
+          }
+
+          return {
+            id: p.id,
+            code: p.code,
+            name: p.name,
+            type: p.type as any,
+            countryCode: p.countryCode,
+            dialCode: p.dialCode,
+            description: p.description,
+            attributes,
+          };
+        });
+
+        return {
+          data: { items },
+          error: null,
+        };
       },
-      orderBy: { code: 'asc' },
-    });
+      () => ({
+        data: { items: FALLBACK_TASTE_PROFILES },
+        error: null,
+      })
+    );
 
-    const items: TasteProfileDetail[] = profiles.map((p) => {
-      const attributes: Record<string, number> = {};
-      for (const d of p.defaults) {
-        attributes[d.attribute.code] = d.defaultValue;
-      }
-
-      return {
-        id: p.id,
-        code: p.code,
-        name: p.name,
-        type: p.type as any,
-        countryCode: p.countryCode,
-        dialCode: p.dialCode,
-        description: p.description,
-        attributes,
-      };
-    });
-
-    const body: ApiResponse<{ items: TasteProfileDetail[] }> = {
-      data: { items: items.length > 0 ? items : FALLBACK_TASTE_PROFILES },
-      error: null,
-    };
     res.json(body);
-  } catch {
-    // Prisma offline, return mock fallback profiles
-    res.json({
-      data: { items: FALLBACK_TASTE_PROFILES },
-      error: null,
-    });
+  } catch (err) {
+    next(err);
   }
 });
 
 // GET /api/taste-profiles/:code
-tasteProfileRoutes.get('/:code', async (req, res) => {
+tasteProfileRoutes.get('/:code', async (req, res, next) => {
   const { code } = req.params;
   try {
-    const profile = await prisma.tasteProfile.findUnique({
-      where: { code },
-      include: {
-        defaults: {
+    const response = await queryWithFallback(
+      async () => {
+        const profile = await prisma.tasteProfile.findUnique({
+          where: { code },
           include: {
-            attribute: true,
+            defaults: {
+              include: {
+                attribute: true,
+              },
+            },
           },
-        },
+        });
+
+        if (!profile || !profile.isActive) {
+          const fallback = FALLBACK_TASTE_PROFILES.find((p) => p.code === code);
+          if (fallback) {
+            return { status: 200, body: { data: fallback, error: null } };
+          }
+          return {
+            status: 404,
+            body: {
+              data: null,
+              error: { code: 'TASTE_PROFILE_NOT_FOUND', message: 'Taste profile not found.' },
+            },
+          };
+        }
+
+        const attributes: Record<string, number> = {};
+        for (const d of profile.defaults) {
+          attributes[d.attribute.code] = d.defaultValue;
+        }
+
+        const item: TasteProfileDetail = {
+          id: profile.id,
+          code: profile.code,
+          name: profile.name,
+          type: profile.type as any,
+          countryCode: profile.countryCode,
+          dialCode: profile.dialCode,
+          description: profile.description,
+          attributes,
+        };
+
+        return {
+          status: 200,
+          body: { data: item, error: null },
+        };
       },
-    });
-
-    if (!profile || !profile.isActive) {
-      const fallback = FALLBACK_TASTE_PROFILES.find((p) => p.code === code);
-      if (fallback) {
-        res.json({ data: fallback, error: null });
-        return;
+      () => {
+        const fallback = FALLBACK_TASTE_PROFILES.find((p) => p.code === code);
+        if (fallback) {
+          return { status: 200, body: { data: fallback, error: null } };
+        }
+        return {
+          status: 404,
+          body: {
+            data: null,
+            error: { code: 'TASTE_PROFILE_NOT_FOUND', message: 'Taste profile not found.' },
+          },
+        };
       }
-      res.status(404).json({
-        data: null,
-        error: { code: 'TASTE_PROFILE_NOT_FOUND', message: 'Taste profile not found.' },
-      });
-      return;
-    }
+    );
 
-    const attributes: Record<string, number> = {};
-    for (const d of profile.defaults) {
-      attributes[d.attribute.code] = d.defaultValue;
-    }
-
-    const item: TasteProfileDetail = {
-      id: profile.id,
-      code: profile.code,
-      name: profile.name,
-      type: profile.type as any,
-      countryCode: profile.countryCode,
-      dialCode: profile.dialCode,
-      description: profile.description,
-      attributes,
-    };
-
-    res.json({
-      data: item,
-      error: null,
-    });
-  } catch {
-    const fallback = FALLBACK_TASTE_PROFILES.find((p) => p.code === code);
-    if (fallback) {
-      res.json({ data: fallback, error: null });
-      return;
-    }
-    res.status(404).json({
-      data: null,
-      error: { code: 'TASTE_PROFILE_NOT_FOUND', message: 'Taste profile not found.' },
-    });
+    res.status(response.status).json(response.body);
+  } catch (err) {
+    next(err);
   }
 });

@@ -4,9 +4,9 @@ import { tasteAnalyticsService } from '../services/taste-analytics.js';
 export const analyticsRoutes: Router = Router();
 
 // GET /api/analytics/overview
-analyticsRoutes.get('/overview', (_req, res) => {
+analyticsRoutes.get('/overview', async (_req, res) => {
   try {
-    const data = tasteAnalyticsService.getOverview();
+    const data = await tasteAnalyticsService.getOverview();
     res.json({ data, error: null });
   } catch (err: any) {
     res.status(500).json({ data: null, error: { code: 'ANALYTICS_ERROR', message: err.message } });
@@ -14,10 +14,10 @@ analyticsRoutes.get('/overview', (_req, res) => {
 });
 
 // GET /api/analytics/taste-radar
-analyticsRoutes.get('/taste-radar', (req, res) => {
+analyticsRoutes.get('/taste-radar', async (req, res) => {
   try {
     const countryCode = (req.query.countryCode as string) || 'ALL';
-    const data = tasteAnalyticsService.getTasteRadar(countryCode);
+    const data = await tasteAnalyticsService.getTasteRadar(countryCode);
     res.json({ data, error: null });
   } catch (err: any) {
     res.status(500).json({ data: null, error: { code: 'ANALYTICS_ERROR', message: err.message } });
@@ -25,9 +25,9 @@ analyticsRoutes.get('/taste-radar', (req, res) => {
 });
 
 // GET /api/analytics/ingredients
-analyticsRoutes.get('/ingredients', (_req, res) => {
+analyticsRoutes.get('/ingredients', async (_req, res) => {
   try {
-    const data = tasteAnalyticsService.getIngredientMetrics();
+    const data = await tasteAnalyticsService.getIngredientMetrics();
     res.json({ data, error: null });
   } catch (err: any) {
     res.status(500).json({ data: null, error: { code: 'ANALYTICS_ERROR', message: err.message } });
@@ -35,9 +35,9 @@ analyticsRoutes.get('/ingredients', (_req, res) => {
 });
 
 // GET /api/analytics/substitutions
-analyticsRoutes.get('/substitutions', (_req, res) => {
+analyticsRoutes.get('/substitutions', async (_req, res) => {
   try {
-    const data = tasteAnalyticsService.getSubstitutionMetrics();
+    const data = await tasteAnalyticsService.getSubstitutionMetrics();
     res.json({ data, error: null });
   } catch (err: any) {
     res.status(500).json({ data: null, error: { code: 'ANALYTICS_ERROR', message: err.message } });
@@ -45,9 +45,9 @@ analyticsRoutes.get('/substitutions', (_req, res) => {
 });
 
 // GET /api/analytics/export
-analyticsRoutes.get('/export', (_req, res) => {
+analyticsRoutes.get('/export', async (_req, res) => {
   try {
-    const csv = tasteAnalyticsService.generateCsvExport();
+    const csv = await tasteAnalyticsService.generateCsvExport();
     const filename = `taste-analytics-report-${new Date().toISOString().slice(0, 10)}.csv`;
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
