@@ -106,7 +106,26 @@ export function TasteAnalyticsPage() {
   const handleExportCsv = async () => {
     try {
       setExporting(true);
-      const res = await fetch('/api/analytics/export');
+      let bearerToken: string | null = null;
+      try {
+        const stored = localStorage.getItem('vft-auth-storage');
+        if (stored) {
+          bearerToken = JSON.parse(stored)?.state?.token || null;
+        }
+      } catch {
+        // ignore storage errors
+      }
+      const headers: Record<string, string> = {};
+      if (bearerToken) {
+        headers['Authorization'] = `Bearer ${bearerToken}`;
+      }
+      const res = await fetch('/api/analytics/export', {
+        credentials: 'include',
+        headers,
+      });
+      if (!res.ok) {
+        throw new Error(`Export failed with HTTP ${res.status}`);
+      }
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');

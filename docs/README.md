@@ -27,14 +27,18 @@ This directory maintains product rules, architectural decisions, API contracts, 
 ### 2. Real-Time Kitchen Display System (SSE)
 - High-performance event streaming over HTTP via `Server-Sent Events` (`/api/events/orders`).
 - Web Audio API notification chime alerting kitchen staff instantly upon new order arrival.
-- Atomic state transitions: `PENDING` -> `ACCEPTED` -> `PREPARING` -> `READY` -> `COMPLETED`.
+- Atomic state transitions: `PENDING` -> `CONFIRMED` -> `PREPARING` -> `READY` -> `COMPLETED`.
 
 ### 3. Taste Analytics & Radar Intelligence
-- 6-axis taste vector aggregation comparing authentic Vietnamese baseline with tourist nationalities.
+- 6-axis taste vector aggregation comparing authentic Vietnamese baseline with tourist nationalities (reads live PostgreSQL orders with `demoOrderStore` fallback).
 - Interactive SVG Radar chart and ingredient aversion tracking (e.g. coriander/cilantro avoidance).
-- Automated multi-section CSV report export for operational BI.
+- Authenticated multi-section CSV report export for operational BI.
 
-### 4. Full-Stack AI Integration (Gemini 2.5 Flash)
+### 4. DB-First Resilience & Backend RBAC
+- **DB-First, Fallback-Safe**: Uses live PostgreSQL via Prisma when reachable (`docker compose up -d`) with automatic fast fallback when offline.
+- **Role-Based Access Control**: Enforces `STAFF` / `ADMIN` JWT cookie or Bearer token verification across `/api/staff/*`, `/api/analytics/*`, `/api/events/orders`, and `/api/ai/kitchen-briefing`.
+
+### 5. Full-Stack AI Integration (Gemini 2.5 Flash)
 - **Cultural Storyteller**: Dynamic historical dish narratives and step-by-step dining etiquette with in-memory caching.
 - **Kitchen Briefing**: Real-time order analysis generating chef shift briefings, line-cook directives, and prep advice.
 - **Taste Concierge**: Global floating AI assistant with natural language understanding and 1-click customized cart insertion.

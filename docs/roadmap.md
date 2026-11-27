@@ -5,14 +5,14 @@
 - [x] Define user flows and sitemap
 - [x] Finalize the order-model decisions needed for the first Prisma draft
 - [x] Draft the HTTP API contract
-- [x] Establish pnpm monorepo architecture (Express + React 18 + Shared Schemas)
+- [x] Establish pnpm monorepo architecture (Express + React 19 + Shared Schemas)
 - [x] Write Prisma schema and database entities
-- [x] Convert source dataset into validated seed files
+- [x] Convert initial MVP dataset into validated seed files
 
 ## Phase 2: Menu and Taste Engine
 - [x] Seed Vietnamese dishes (Phở Bò Hà Nội, Bún Chả Hà Nội, Bánh Mì Kẹp Đặc Biệt)
 - [x] Seed 6 core taste dimensions (spice, sweetness, sourness, fish sauce, herbs, oil richness)
-- [x] Seed country taste profiles (Authentic VN, Korea, US/Europe, Japan, China, India)
+- [x] Seed 4 country taste profiles (`AUTHENTIC_VN`, `KR_INSPIRED`, `WESTERN_MILD`, `JP_DELICATE`)
 - [x] Implement taste clamping logic & allowed ranges
 - [x] Implement ingredient omission and dietary substitution rules (e.g., Lemongrass Tofu)
 
@@ -55,4 +55,13 @@
 - [x] **Feature 1**: AI Cultural Dish Storyteller & Dining Etiquette on Dish Detail
 - [x] **Feature 2**: AI Kitchen Operating Briefing on Analytics Dashboard
 - [x] **Feature 3**: AI Taste Concierge floating widget with voice input & 1-click customized cart insertion
-- [x] Comprehensive automated verification test suite: 56/56 checks passing (100%)
+- [x] Comprehensive automated verification test suite: 60/60 checks passing (100%)
+
+## Phase 8: PostgreSQL Integration & Backend Security Hardening
+- [x] Docker PostgreSQL 15 setup, additive Prisma migration (`add_tourist_contact_and_dial_code`), and idempotent seeding (dishes, profiles, 6 demo users, 4 sample orders)
+- [x] DB-first + fallback-safe hardening across dishes, taste profiles, orders (`GET /api/orders/:orderNumber`, id/slug resolution, 4xx error preservation), and Prisma-backed Taste Analytics
+- [x] Backend RBAC middleware (`requireAuth` / `requireRole('STAFF', 'ADMIN')`) protecting `/api/staff/*`, `/api/analytics/*`, `/api/events/orders`, and `/api/ai/kitchen-briefing`
+- [x] Synced 1-click demo login accounts (`customer@demo.com`, `staff@demo.com`), public signup `CUSTOMER`-only role hardening, `.env` auto-loader, and production `JWT_SECRET`/`PHONE_SECRET` guards
+- [ ] Expand dataset from 3 MVP dishes to all 8 documented dishes with full allergen & dietary tags
+- [ ] Configure real ESLint rules across packages (currently placeholder `echo lint`)
+- [ ] Integrate live online payment gateway beyond COD / placeholder methods

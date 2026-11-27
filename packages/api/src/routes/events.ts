@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { requireRole } from '../middleware/auth.js';
 import {
   orderEvents,
   type OrderCreatedPayload,
@@ -35,7 +36,7 @@ function sendSseMessage(res: Response, event: string, data: unknown): void {
  * GET /api/events/orders
  * Stream all order events for Staff KDS
  */
-eventsRoutes.get('/orders', (req: Request, res: Response) => {
+eventsRoutes.get('/orders', requireRole('STAFF', 'ADMIN'), (req: Request, res: Response) => {
   initSseResponse(res);
 
   // Send initial connection comment

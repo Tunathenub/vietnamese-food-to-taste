@@ -418,11 +418,122 @@ async function runVerification() {
       'Broker correctly emits and delivers order:created and order:status_updated typed events.'
     );
 
-    // B. Verify HTTP SSE Server Endpoints
+    // B. Verify HTTP RBAC Enforcement, Auth Sync & SSE Server Endpoints
     const server = http.createServer(app);
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
     const address = server.address() as any;
     const port = address.port;
+
+    const requestHttp = (
+      method: string,
+      path: string,
+      body?: any,
+      headers: Record<string, string> = {}
+    ): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: any; raw: string }> => {
+      return new Promise((resolve, reject) => {
+        const payload = body !== undefined ? JSON.stringify(body) : undefined;
+        const reqHeaders: Record<string, string | number> = { ...headers };
+        if (payload !== undefined) {
+          reqHeaders['Content-Type'] = 'application/json';
+          reqHeaders['Content-Length'] = Buffer.byteLength(payload);
+        }
+        const req = http.request(
+          { hostname: '127.0.0.1', port, path, method, headers: reqHeaders },
+          (res) => {
+            let raw = '';
+            res.on('data', (chunk) => (raw += chunk));
+            res.on('end', () => {
+              let parsed: any = raw;
+              try {
+                parsed = JSON.parse(raw);
+              } catch {
+                // keep raw text
+              }
+              resolve({ status: res.statusCode || 0, headers: res.headers, body: parsed, raw });
+            });
+          }
+        );
+        req.on('error', reject);
+        if (payload !== undefined) req.write(payload);
+        req.end();
+      });
+    };
+
+    const [custLoginRes, staffLoginRes] = await Promise.all([
+      requestHttp('POST', '/api/auth/login', { email: 'customer@demo.com', password: 'password123' }),
+      requestHttp('POST', '/api/auth/login', { email: 'staff@demo.com', password: 'password123' }),
+    ]);
+
+    const customerToken = custLoginRes.body?.data?.token as string | undefined;
+    const staffToken = staffLoginRes.body?.data?.token as string | undefined;
+    const staffCookie = Array.isArray(staffLoginRes.headers['set-cookie'])
+      ? staffLoginRes.headers['set-cookie'].join('; ')
+      : '';
+
+    assert(
+      custLoginRes.status === 200 &&
+      Boolean(customerToken) &&
+      custLoginRes.body?.data?.user?.role === 'CUSTOMER' &&
+      staffLoginRes.status === 200 &&
+      Boolean(staffToken) &&
+      staffLoginRes.body?.data?.user?.role === 'STAFF' &&
+      staffCookie.includes('vft_session='),
+      'Demo Quick-Login Accounts Sync (/api/auth/login)',
+      'customer@demo.com and staff@demo.com authenticate against API and receive signed JWT + HTTP-only vft_session cookie.'
+    );
+
+    const signupEmail = `verify.staff.${Date.now()}@example.com`;
+    const signupStaffEmailRes = await requestHttp('POST', '/api/auth/register', {
+      name: 'Signup Role Guard Test',
+      email: signupEmail,
+      password: 'password123',
+      phone: '+84901234567',
+      nationality: 'Vietnam',
+    });
+    assert(
+      signupStaffEmailRes.status === 201 && signupStaffEmailRes.body?.data?.user?.role === 'CUSTOMER',
+      'Public Signup Role Hardening (/api/auth/register)',
+      'Registering with an email containing "staff" strictly assigns CUSTOMER role and prevents privilege escalation.'
+    );
+    try {
+      const { prisma } = await import('../packages/api/src/lib/prisma.js');
+      await prisma.user.deleteMany({ where: { email: { startsWith: 'verify.staff.' } } });
+    } catch {
+      // ignore if DB offline
+    }
+
+    const [unauthStaff, unauthAnalytics, unauthEvents, unauthBriefing] = await Promise.all([
+      requestHttp('GET', '/api/staff/orders'),
+      requestHttp('GET', '/api/analytics/overview'),
+      requestHttp('GET', '/api/events/orders'),
+      requestHttp('POST', '/api/ai/kitchen-briefing', { timeframe: 'today' }),
+    ]);
+    assert(
+      unauthStaff.status === 401 &&
+      unauthAnalytics.status === 401 &&
+      unauthEvents.status === 401 &&
+      unauthBriefing.status === 401,
+      'Backend RBAC Rejects Unauthenticated Requests (401)',
+      'Unauthenticated calls to /api/staff/*, /api/analytics/*, /api/events/orders, and /api/ai/kitchen-briefing return 401.'
+    );
+
+    const custHeaders = { Authorization: `Bearer ${customerToken}` };
+    const [custStaff, custAnalytics, custEvents, custBriefing] = await Promise.all([
+      requestHttp('GET', '/api/staff/orders', undefined, custHeaders),
+      requestHttp('GET', '/api/analytics/overview', undefined, custHeaders),
+      requestHttp('GET', '/api/events/orders', undefined, custHeaders),
+      requestHttp('POST', '/api/ai/kitchen-briefing', { timeframe: 'today' }, custHeaders),
+    ]);
+    assert(
+      custStaff.status === 403 &&
+      custAnalytics.status === 403 &&
+      custEvents.status === 403 &&
+      custBriefing.status === 403,
+      'Backend RBAC Rejects Customer Role (403)',
+      'CUSTOMER role is blocked with 403 FORBIDDEN on /api/staff/*, /api/analytics/*, /api/events/orders, and /api/ai/kitchen-briefing.'
+    );
+
+    const staffHeaders = { Authorization: `Bearer ${staffToken}` };
 
     // Test 1: GET /api/events/orders (Staff KDS broadcast stream)
     const sseKdsPromise = new Promise<{ headers: any; events: string[] }>((resolve, reject) => {
@@ -453,7 +564,7 @@ async function runVerification() {
           hostname: '127.0.0.1',
           port,
           path: '/api/events/orders',
-          headers: { Accept: 'text/event-stream' },
+          headers: { Accept: 'text/event-stream', ...staffHeaders },
         },
         (res) => {
           responseHeaders = res.headers;
@@ -660,34 +771,10 @@ async function runVerification() {
     console.log('\n--- Checking Taste Analytics Dashboard ---');
     // Close test server after analytics checks
     const [overviewData, radarData, ingData, exportCsv] = await Promise.all([
-      new Promise<any>((resolve, reject) => {
-        http.get(`http://127.0.0.1:${port}/api/analytics/overview`, (res) => {
-          let data = '';
-          res.on('data', (c) => (data += c));
-          res.on('end', () => resolve(JSON.parse(data)));
-        }).on('error', reject);
-      }),
-      new Promise<any>((resolve, reject) => {
-        http.get(`http://127.0.0.1:${port}/api/analytics/taste-radar?countryCode=KR`, (res) => {
-          let data = '';
-          res.on('data', (c) => (data += c));
-          res.on('end', () => resolve(JSON.parse(data)));
-        }).on('error', reject);
-      }),
-      new Promise<any>((resolve, reject) => {
-        http.get(`http://127.0.0.1:${port}/api/analytics/ingredients`, (res) => {
-          let data = '';
-          res.on('data', (c) => (data += c));
-          res.on('end', () => resolve(JSON.parse(data)));
-        }).on('error', reject);
-      }),
-      new Promise<string>((resolve, reject) => {
-        http.get(`http://127.0.0.1:${port}/api/analytics/export`, (res) => {
-          let data = '';
-          res.on('data', (c) => (data += c));
-          res.on('end', () => resolve(data));
-        }).on('error', reject);
-      }),
+      requestHttp('GET', '/api/analytics/overview', undefined, staffHeaders).then((r) => r.body),
+      requestHttp('GET', '/api/analytics/taste-radar?countryCode=KR', undefined, staffHeaders).then((r) => r.body),
+      requestHttp('GET', '/api/analytics/ingredients', undefined, staffHeaders).then((r) => r.body),
+      requestHttp('GET', '/api/analytics/export', undefined, staffHeaders).then((r) => r.raw),
     ]);
 
     // Close test server now that all HTTP requests are complete
@@ -755,7 +842,11 @@ async function runVerification() {
     await new Promise<void>((resolve) => aiServer.listen(0, '127.0.0.1', () => resolve()));
     const aiPort = (aiServer.address() as any).port;
 
-    const postJson = (path: string, body: any): Promise<{ status: number; body: any }> => {
+    const postJson = (
+      path: string,
+      body: any,
+      extraHeaders: Record<string, string> = {}
+    ): Promise<{ status: number; body: any }> => {
       return new Promise((resolve, reject) => {
         const data = JSON.stringify(body);
         const req = http.request(
@@ -767,6 +858,7 @@ async function runVerification() {
             headers: {
               'Content-Type': 'application/json',
               'Content-Length': Buffer.byteLength(data),
+              ...extraHeaders,
             },
           },
           (res) => {
@@ -897,10 +989,16 @@ async function runVerification() {
       `Cached response served instantaneously (${cacheDuration}ms) with identical cultural content.`
     );
 
+    const staffAiLogin = await postJson('/api/auth/login', {
+      email: 'staff@demo.com',
+      password: 'password123',
+    });
+    const aiStaffHeaders = { Authorization: `Bearer ${staffAiLogin.body?.data?.token || ''}` };
+
     // G. POST /api/ai/kitchen-briefing
     const briefingRes = await postJson('/api/ai/kitchen-briefing', {
       timeframe: 'today',
-    });
+    }, aiStaffHeaders);
     const briefing = briefingRes.body.data || briefingRes.body;
     assert(
       briefingRes.status === 200 &&
@@ -919,7 +1017,7 @@ async function runVerification() {
     const [resilConcierge, resilStory, resilBriefing] = await Promise.all([
       postJson('/api/ai/concierge', { prompt: 'Tôi muốn ăn phở bò thật cay', language: 'vi' }),
       postJson('/api/ai/dish-story', { dishSlug: 'pho-bo', language: 'vi' }),
-      postJson('/api/ai/kitchen-briefing', { timeframe: 'today' }),
+      postJson('/api/ai/kitchen-briefing', { timeframe: 'today' }, aiStaffHeaders),
     ]);
 
     // Restore original key
